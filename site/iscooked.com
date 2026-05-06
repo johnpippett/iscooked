@@ -667,7 +667,8 @@ $HOME/.local/share/fish/fish_history"
     while IFS= read -r hist_file; do
         if [[ -f "$hist_file" ]]; then
             local key_leaks
-            key_leaks=$(grep -ciE '(sk-[a-zA-Z0-9]{20,}|api_key=|OPENAI_API_KEY|ANTHROPIC_API_KEY|HF_TOKEN)' "$hist_file" 2>/dev/null || echo "0")
+            key_leaks=$(grep -ciE '(sk-[a-zA-Z0-9]{20,}|api_key=|OPENAI_API_KEY|ANTHROPIC_API_KEY|HF_TOKEN)' "$hist_file" 2>/dev/null || true)
+            key_leaks="${key_leaks:-0}"
             if [[ "$key_leaks" -gt 0 ]]; then
                 result_cooked "Shell history contains ~${key_leaks} potential API key(s): $(basename "$hist_file")"
             else
