@@ -30,6 +30,11 @@ def read_repo_file(*parts: str) -> str:
 
 
 class TestInstallSecurity:
+    def test_deployed_scanner_is_only_tracked_scanner_copy(self):
+        """Avoid stale root copies drifting away from the deployed script."""
+        assert not os.path.exists(os.path.join(REPO_ROOT, "cooked.sh"))
+        assert os.path.exists(SCRIPT_PATH)
+
     def test_public_install_snippets_use_explicit_https(self):
         """Published install commands must not rely on curl/wget URL guessing."""
         readme = read_repo_file("README.md")
@@ -93,6 +98,7 @@ set -euo pipefail
 sed '/^main "\\$@"$/d' "{SCRIPT_PATH}" > "$TMPDIR/iscooked_funcs.sh"
 source "$TMPDIR/iscooked_funcs.sh"
 export PATH="{tmpdir}:{extra_path}"
+OS_TYPE="${{ISCOOKED_TEST_OS_TYPE:-linux}}"
 main
 """
             )
@@ -135,6 +141,7 @@ set -euo pipefail
                 sed '/^main "\\$@"$/d' "{SCRIPT_PATH}" > "$TMPDIR/iscooked_funcs.sh"
 source "$TMPDIR/iscooked_funcs.sh"
 export PATH="{tmpdir}:{extra_path}"
+OS_TYPE="${{ISCOOKED_TEST_OS_TYPE:-linux}}"
 {function_name}
 """
             )
@@ -376,6 +383,22 @@ class TestHostsAnchoring:
             assert result_new.returncode != 0, "Anchored grep must NOT match the substring"
         finally:
             os.unlink(hosts_path)
+
+
+class TestHistoryLogs:
+    def test_empty_history_file_does_not_emit_numeric_syntax_error(self):
+        """grep -c no-match output must normalize to one numeric value."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            open(os.path.join(tmpdir, ".bash_history"), "w").close()
+
+            result = source_and_run(
+                "check_history_logs",
+                env_vars={"HOME": tmpdir},
+            )
+
+            assert result.returncode == 0
+            assert "syntax error in expression" not in result.stderr_plain
+            assert "No API keys found in .bash_history" in result.stdout_plain
 
 
 # ─────────────────────────────────────────────────────────────────────────────
