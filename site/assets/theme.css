@@ -46,6 +46,12 @@ nav .container {
     font-size: 18px;
     color: var(--green);
 }
+.logo img {
+    height: 48px;
+    width: auto;
+    display: block;
+    border-radius: 12px;
+}
 .nav-links a {
     color: var(--text-dim);
     margin-left: 24px;
