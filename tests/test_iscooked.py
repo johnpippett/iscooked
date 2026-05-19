@@ -305,6 +305,23 @@ exit 0
         )
         assert "Port 11434 is exposed on all interfaces over plain HTTP" not in result.stdout_plain
 
+    def test_failed_curl_probe_does_not_concat_000_status(self):
+        """curl can print 000 and exit nonzero; that must stay a failed probe."""
+        mock_ss = '''
+if [ "$1" = "-tlnp" ]; then
+    echo 'LISTEN 0 128 0.0.0.0:11434 users:(("ollama",pid=12345,fd=3))'
+fi
+'''
+        mock_curl = '''
+echo "000"
+exit 7
+'''
+        result = run_with_mocks(
+            mocks={"ss": mock_ss, "curl": mock_curl, "uname": 'echo Linux'},
+            extra_path="/usr/bin:/bin",
+        )
+        assert "Port 11434 is exposed on all interfaces over plain HTTP" not in result.stdout_plain
+
     def test_http_probe_uses_total_timeout(self):
         """curl probes must include --max-time so slow responses cannot hang the scan."""
         mock_ss = '''
@@ -500,3 +517,86 @@ echo "Mock nvidia-smi"
             extra_path="/usr/bin:/bin",
         )
         assert "NVIDIA management service has network-exposed ports" not in result.stdout_plain
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Bug 10: Specific non-loopback listeners misreported as localhost
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestSpecificBindExposure:
+    def test_specific_non_loopback_bind_is_not_localhost_safe(self):
+        """A concrete LAN bind is network-reachable, not localhost-only."""
+        mock_ss = '''
+if [ "$1" = "-tlnp" ]; then
+    echo 'LISTEN 0 128 192.168.1.50:11434 users:(("ollama",pid=12345,fd=3))'
+fi
+'''
+        result = source_and_run(
+            "check_network_exposure",
+            mocks={"ss": mock_ss, "uname": 'echo Linux'},
+            extra_path="/usr/bin:/bin",
+        )
+        assert "bound to localhost only" not in result.stdout_plain
+        assert "Ollama (port 11434) is bound to non-loopback interface 192.168.1.50" in result.stdout_plain
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Bug 11: Specific non-loopback HTTP listeners skipped by SSL/TLS check
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestSpecificBindSslTls:
+    def test_specific_non_loopback_http_probe_flags_plain_http(self):
+        """Plain HTTP on a concrete LAN bind is still non-localhost exposure."""
+        mock_ss = '''
+if [ "$1" = "-tlnp" ]; then
+    echo 'LISTEN 0 128 192.168.1.50:11434 users:(("ollama",pid=12345,fd=3))'
+fi
+'''
+        mock_curl = '''
+if echo "$@" | grep -q "http://192.168.1.50:11434/"; then
+    echo "200"
+    exit 0
+fi
+echo "000"
+exit 0
+'''
+        result = source_and_run(
+            "check_ssl_tls",
+            mocks={"ss": mock_ss, "curl": mock_curl, "uname": 'echo Linux'},
+            extra_path="/usr/bin:/bin",
+        )
+        assert "Port 11434 is exposed on 192.168.1.50 over plain HTTP" in result.stdout_plain
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Bug 12: UFW inactive substring false positive
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestFirewall:
+    def test_ufw_inactive_is_not_reported_active(self):
+        """`Status: inactive` contains `active` but must not be treated as active."""
+        mock_ufw = '''
+echo "Status: inactive"
+'''
+        result = source_and_run(
+            "check_firewall",
+            mocks={"ufw": mock_ufw, "uname": 'echo Linux'},
+            extra_path="/usr/bin:/bin",
+        )
+        assert "UFW firewall is active" not in result.stdout_plain
+        assert "UFW is installed but INACTIVE" in result.stdout_plain
+
+    def test_ufw_active_is_reported_active(self):
+        """Exact active status still passes."""
+        mock_ufw = '''
+echo "Status: active"
+'''
+        result = source_and_run(
+            "check_firewall",
+            mocks={"ufw": mock_ufw, "uname": 'echo Linux'},
+            extra_path="/usr/bin:/bin",
+        )
+        assert "UFW firewall is active" in result.stdout_plain

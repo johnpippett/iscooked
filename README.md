@@ -69,7 +69,7 @@ Your **cooked score** ranges from 0–100%:
 
 ## Privacy
 
-iscooked.com runs **entirely on your machine**. It makes no network requests, sends no telemetry, and phones home to absolutely nobody. The only network activity is checking if your local AI services are reachable on localhost.
+iscooked.com runs **entirely on your machine**. It sends no telemetry and phones home to absolutely nobody. The only network activity is checking whether local AI services are reachable on localhost or on the local bind address they already expose.
 
 ## Contributing
 
