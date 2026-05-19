@@ -152,17 +152,86 @@ get_listen_line() {
     fi
 }
 
+# Extract the local bind host from ss/netstat output for this port.
+get_listen_host() {
+    local listen_line="$1"
+    local port="$2"
+    local host
+    host=$(awk '{print $4}' <<< "$listen_line")
+
+    if [[ "$OS_TYPE" == "macos" ]]; then
+        host="${host%."${port}"}"
+    else
+        host="${host%:"${port}"}"
+    fi
+
+    host="${host#[}"
+    host="${host%]}"
+    printf '%s\n' "$host"
+}
+
+is_all_interface_host() {
+    local host="${1#[}"
+    host="${host%]}"
+    [[ "$host" == "0.0.0.0" || "$host" == "*" || "$host" == "::" ]]
+}
+
+is_loopback_host() {
+    local host="${1#[}"
+    host="${host%]}"
+    [[ "$host" == "localhost" || "$host" == 127.* || "$host" == "::1" ]]
+}
+
 # Check if a listen line is bound to all interfaces
 is_bound_all_interfaces() {
     local listen_line="$1"
     local port="$2"
-    if [[ "$OS_TYPE" == "macos" ]]; then
-        echo "$listen_line" | grep -qE '(\*|0\.0\.0\.0)\.'"${port}" && return 0
-        echo "$listen_line" | grep -qE '(::)\.'"${port}" && return 0
-        return 1
+    local line host
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        host=$(get_listen_host "$line" "$port")
+        is_all_interface_host "$host" && return 0
+    done <<< "$listen_line"
+    return 1
+}
+
+is_bound_loopback_only() {
+    local listen_line="$1"
+    local port="$2"
+    local line host found_loopback=false
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        host=$(get_listen_host "$line" "$port")
+        if is_loopback_host "$host"; then
+            found_loopback=true
+        else
+            return 1
+        fi
+    done <<< "$listen_line"
+    [[ "$found_loopback" == "true" ]]
+}
+
+get_non_loopback_listen_host() {
+    local listen_line="$1"
+    local port="$2"
+    local line host
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        host=$(get_listen_host "$line" "$port")
+        if ! is_all_interface_host "$host" && ! is_loopback_host "$host"; then
+            printf '%s\n' "$host"
+            return 0
+        fi
+    done <<< "$listen_line"
+    return 1
+}
+
+format_http_host() {
+    local host="$1"
+    if [[ "$host" == *:* && "$host" != \[*\] ]]; then
+        printf '[%s]\n' "$host"
     else
-        echo "$listen_line" | grep -qE '(0\.0\.0\.0|\*|::|\[::\]):'"${port}" && return 0
-        return 1
+        printf '%s\n' "$host"
     fi
 }
 
@@ -196,8 +265,12 @@ check_network_exposure() {
             found_any=true
             if is_bound_all_interfaces "$listen_line" "$port"; then
                 result_cooked "${name} (port ${port}) is listening on ALL interfaces"
-            else
+            elif is_bound_loopback_only "$listen_line" "$port"; then
                 result_safe "${name} (port ${port}) is bound to localhost only"
+            else
+                local bind_host
+                bind_host=$(get_non_loopback_listen_host "$listen_line" "$port" || echo "non-loopback interface")
+                result_warming "${name} (port ${port}) is bound to non-loopback interface ${bind_host}"
             fi
         fi
     done <<< "$ai_ports"
@@ -497,7 +570,7 @@ check_firewall() {
         if command_exists ufw; then
             local ufw_status
             ufw_status=$(ufw status 2>/dev/null || echo "inactive")
-            if echo "$ufw_status" | grep -qi "active"; then
+            if echo "$ufw_status" | grep -Eqi "^Status:[[:space:]]+active$"; then
                 result_safe "UFW firewall is active"
                 has_firewall=true
             else
@@ -563,16 +636,28 @@ check_ssl_tls() {
         listen_line=$(get_listen_line "$port")
 
         if [[ -n "$listen_line" ]]; then
+            local probe_host=""
+            local exposure_desc=""
             if is_bound_all_interfaces "$listen_line" "$port"; then
+                probe_host="127.0.0.1"
+                exposure_desc="all interfaces"
+            else
+                probe_host=$(get_non_loopback_listen_host "$listen_line" "$port" || true)
+                exposure_desc="$probe_host"
+            fi
+
+            if [[ -n "$probe_host" ]]; then
                 if command_exists curl; then
                     local http_code
-                    http_code=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 "http://127.0.0.1:${port}/" 2>/dev/null || echo "000")
+                    local probe_url_host
+                    probe_url_host=$(format_http_host "$probe_host")
+                    http_code=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 "http://${probe_url_host}:${port}/" 2>/dev/null) || http_code="000"
                     if [[ "$http_code" != "000" && -n "$http_code" ]]; then
-                        result_cooked "Port ${port} is exposed on all interfaces over plain HTTP"
+                        result_cooked "Port ${port} is exposed on ${exposure_desc} over plain HTTP"
                         found_http=true
                     fi
                 else
-                    result_warming "Port ${port} is exposed on all interfaces (cannot verify TLS without curl)"
+                    result_warming "Port ${port} is exposed on ${exposure_desc} (cannot verify TLS without curl)"
                     found_http=true
                 fi
             fi
