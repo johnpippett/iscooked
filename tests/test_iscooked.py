@@ -600,3 +600,147 @@ echo "Status: active"
             extra_path="/usr/bin:/bin",
         )
         assert "UFW firewall is active" in result.stdout_plain
+
+    def test_empty_iptables_ruleset_does_not_crash(self):
+        """An empty iptables ruleset (no matching lines) must NOT abort the scan.
+
+        grep -c prints "0" and exits 1 on no-match; the `|| echo "0"` fallback
+        then yields "0\n0", which crashes the subsequent arithmetic expansion.
+        """
+        mock_iptables = '''
+# no rules — iptables -L succeeds but emits only chain/table headers that
+# grep -v filters out, leaving zero counted lines.
+echo "Chain INPUT (policy ACCEPT)"
+echo "target     prot opt source               destination"
+'''
+        result = source_and_run(
+            "check_firewall",
+            mocks={"iptables": mock_iptables, "uname": 'echo Linux'},
+            extra_path="/usr/bin:/bin",
+        )
+        assert result.returncode == 0
+        assert "syntax error" not in result.stderr_plain.lower()
+        # Scanner still reaches its own summary line ("No active firewall detected!")
+        assert "No active firewall detected!" in result.stdout_plain
+
+    def test_inaccessible_iptables_ruleset_does_not_crash(self):
+        """An iptables call that fails (e.g. no permission) must be skipped, not crash.
+
+        The failed command emits nothing, so grep counts 0 lines; the fallback
+        must normalise to a single numeric value.
+        """
+        mock_iptables = '''
+echo "iptables: Permission denied (you must be root)" >&2
+exit 1
+'''
+        result = source_and_run(
+            "check_firewall",
+            mocks={"iptables": mock_iptables, "uname": 'echo Linux'},
+            extra_path="/usr/bin:/bin",
+        )
+        assert result.returncode == 0
+        assert "syntax error" not in result.stderr_plain.lower()
+        assert "No active firewall detected!" in result.stdout_plain
+
+    def test_inaccessible_nft_ruleset_does_not_crash(self):
+        """An nft call that fails under pipefail must normalise its count to one numeric value.
+
+        `nft list ruleset | wc -l` emits "0" but the pipeline exits nonzero on
+        failure; the `|| echo "0"` fallback would otherwise yield "0\n0".
+        """
+        mock_nft = '''
+echo "nft: Operation not permitted" >&2
+exit 1
+'''
+        result = source_and_run(
+            "check_firewall",
+            mocks={"nft": mock_nft, "uname": 'echo Linux'},
+            extra_path="/usr/bin:/bin",
+        )
+        assert result.returncode == 0
+        assert "syntax error" not in result.stderr_plain.lower()
+        assert "No active firewall detected!" in result.stdout_plain
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Inspection failure must never be reported SAFE
+# (model directory unreadable / docker mount inspect failure)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestModelPermissionsIncomplete:
+    @pytest.mark.skipif(os.geteuid() == 0, reason="permission bits not enforced as root")
+    def test_unreadable_model_dir_is_not_reported_safe(self):
+        """An unreadable model directory must NOT be reported SAFE; the scan must
+        say inspection was incomplete (SKIP) while continuing the scan/summary."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_dir = os.path.join(tmpdir, ".ollama", "models")
+            os.makedirs(model_dir, mode=0o755)
+            os.chmod(model_dir, 0o000)
+            try:
+                result = source_and_run(
+                    "check_model_permissions",
+                    env_vars={"HOME": tmpdir},
+                )
+            finally:
+                os.chmod(model_dir, 0o755)
+
+            assert "SAFE" not in result.stdout_plain
+            assert "world-readable" not in result.stdout_plain.lower()
+            assert "incomplete" in result.stdout_plain.lower()
+
+    def test_find_failure_is_not_reported_safe(self):
+        """A failed recursive find must produce an incomplete inspection result."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_dir = os.path.join(tmpdir, ".ollama", "models")
+            os.makedirs(model_dir)
+            result = source_and_run(
+                "check_model_permissions",
+                mocks={"find": "exit 1", "uname": 'echo Linux'},
+                env_vars={"HOME": tmpdir},
+            )
+
+        assert "SAFE" not in result.stdout_plain
+        assert "incomplete" in result.stdout_plain.lower()
+
+
+class TestDockerSensitiveMounts:
+    def test_home_mount_detected_when_not_last_and_has_trailing_delimiter(self):
+        """A `/home/<user>` mount must be detected even when it is NOT the last
+        mount source (old space-joined grep with `$` anchor missed it)."""
+        mock_docker = '''
+case "$1" in
+  info) exit 0 ;;
+  ps) echo "webui nogpu/open-webui" ;;
+  inspect)
+    case "$*" in
+      *'Config.User'*) echo "1000" ;;
+      *'Privileged'*) echo "false" ;;
+      *'NetworkMode'*) echo "default" ;;
+      *'{{"\\n"'*) printf '/home/alice\\n/data\\n' ;;
+      *) echo '/home/alice /data' ;;
+    esac
+    ;;
+esac
+'''
+        result = source_and_run(
+            "check_docker_risks",
+            mocks={"docker": mock_docker, "uname": 'echo Linux'},
+        )
+        assert "has sensitive host paths mounted" in result.stdout_plain
+
+    def test_docker_inspect_failure_reports_unknown_not_clean(self):
+        """If `docker inspect` fails, the mount check must report UNKNOWN rather
+        than silently reporting nothing/clean."""
+        mock_docker = '''
+case "$1" in
+  info) exit 0 ;;
+  ps) echo "webui nogpu/open-webui" ;;
+  *) echo "inspect failed" >&2; exit 1 ;;
+esac
+'''
+        result = source_and_run(
+            "check_docker_risks",
+            mocks={"docker": mock_docker, "uname": 'echo Linux'},
+        )
+        assert "UNKNOWN" in result.stdout_plain
+        assert "incomplete" in result.stdout_plain.lower()
