@@ -237,6 +237,30 @@ class TestTelemetry:
         assert "OLLAMA_NOPRUNE" not in result.stdout_plain
         assert "OLLAMA_NO_CLOUD" not in result.stdout_plain
 
+    def test_dnt_unset_emits_no_message(self):
+        """Issue #15: when DO_NOT_TRACK is unset, emit NOTHING about it.
+
+        The unset case must neither warm nor add to the score, so no
+        warning/cooked line mentioning DO_NOT_TRACK may appear in output.
+        (Explicitly set it to empty so the test is not affected by the
+        runner environment.)
+        """
+        result = source_and_run(
+            "check_telemetry",
+            mocks={"uname": 'echo Linux'},
+            env_vars={"DO_NOT_TRACK": ""},
+        )
+        assert "DO_NOT_TRACK" not in result.stdout_plain
+
+    def test_dnt_set_still_emits_safe_message(self):
+        """DO_NOT_TRACK=1 should still be reported as the existing safe message."""
+        result = source_and_run(
+            "check_telemetry",
+            mocks={"uname": 'echo Linux'},
+            env_vars={"DO_NOT_TRACK": "1"},
+        )
+        assert "DO_NOT_TRACK=1 is set (good!)" in result.stdout_plain
+
     def test_ss_not_grepped_for_telemetry_domains(self):
         """The script must NOT call ss/netstat to grep for telemetry hostnames."""
         ss_called = False

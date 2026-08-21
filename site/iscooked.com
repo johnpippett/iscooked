@@ -542,8 +542,6 @@ stats.lmstudio.ai"
     local do_not_track="${DO_NOT_TRACK:-}"
     if [[ "$do_not_track" == "1" ]]; then
         result_safe "DO_NOT_TRACK=1 is set (good!)"
-    else
-        result_warming "DO_NOT_TRACK is not set — some tools respect this env var"
     fi
 
     # Check /etc/hosts for blocked telemetry
