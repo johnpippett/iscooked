@@ -755,6 +755,52 @@ esac
         )
         assert "has sensitive host paths mounted" in result.stdout_plain
 
+    def test_home_subdirectory_dotssh_mount_flagged(self):
+        """A `/home/<user>/.ssh` mount must be flagged as a sensitive host path
+        (old `^/home/[^/]+$` anchor only matched the literal top-level dir)."""
+        mock_docker = '''
+case "$1" in
+  info) exit 0 ;;
+  ps) echo "webui nogpu/open-webui" ;;
+  inspect)
+    case "$*" in
+      *'Config.User'*) echo "1000" ;;
+      *'Privileged'*) echo "false" ;;
+      *'NetworkMode'*) echo "default" ;;
+      *'{{range .Mounts'*) printf '%s\\n' '/home/alice/.ssh' '/data' ;;
+    esac
+    ;;
+esac
+'''
+        result = source_and_run(
+            "check_docker_risks",
+            mocks={"docker": mock_docker, "uname": 'echo Linux'},
+        )
+        assert "has sensitive host paths mounted" in result.stdout_plain
+
+    def test_home_subdirectory_documents_mount_flagged(self):
+        """A `/home/<user>/Documents` mount must be flagged as a sensitive host
+        path even when it is not the first/only mount source."""
+        mock_docker = '''
+case "$1" in
+  info) exit 0 ;;
+  ps) echo "webui nogpu/open-webui" ;;
+  inspect)
+    case "$*" in
+      *'Config.User'*) echo "1000" ;;
+      *'Privileged'*) echo "false" ;;
+      *'NetworkMode'*) echo "default" ;;
+      *'{{range .Mounts'*) printf '%s\\n' '/data' '/home/alice/Documents' ;;
+    esac
+    ;;
+esac
+'''
+        result = source_and_run(
+            "check_docker_risks",
+            mocks={"docker": mock_docker, "uname": 'echo Linux'},
+        )
+        assert "has sensitive host paths mounted" in result.stdout_plain
+
     def test_docker_inspect_failure_reports_unknown_not_clean(self):
         """If `docker inspect` fails, the mount check must report UNKNOWN rather
         than silently reporting nothing/clean."""

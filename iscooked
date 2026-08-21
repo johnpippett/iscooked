@@ -442,7 +442,7 @@ check_docker_risks() {
         local mounts
         if ! mounts=$(docker inspect --format '{{range .Mounts}}{{.Source}}{{"\n"}}{{end}}' "$cname" 2>/dev/null); then
             result_unknown "Container '${cname}' mount inspection failed — sensitive path status UNKNOWN (inspection incomplete)"
-        elif echo "$mounts" | grep -qE '^(/etc|/root)(/|$)|^/home/[^/]+$'; then
+        elif echo "$mounts" | grep -qE '^(/etc|/root)(/|$)|^/home/[^/]+(/|$)'; then
             result_warming "Container '${cname}' has sensitive host paths mounted"
         fi
 
