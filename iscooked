@@ -297,7 +297,7 @@ check_api_auth() {
     if command_exists curl; then
         # Ollama
         local ollama_resp
-        ollama_resp=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 http://127.0.0.1:11434/ 2>/dev/null) || ollama_resp="000"
+        ollama_resp=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 --noproxy '*' http://127.0.0.1:11434/ 2>/dev/null) || ollama_resp="000"
         if [[ "$ollama_resp" == "200" ]]; then
             result_warming "Ollama API is responding without authentication"
         elif [[ "$ollama_resp" != "000" ]]; then
@@ -306,14 +306,14 @@ check_api_auth() {
 
         # LM Studio
         local lms_resp
-        lms_resp=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 http://127.0.0.1:1234/v1/models 2>/dev/null) || lms_resp="000"
+        lms_resp=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 --noproxy '*' http://127.0.0.1:1234/v1/models 2>/dev/null) || lms_resp="000"
         if [[ "$lms_resp" == "200" ]]; then
             result_warming "LM Studio API is responding without authentication"
         fi
 
         # Open WebUI
         local webui_resp
-        webui_resp=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 http://127.0.0.1:3000/ 2>/dev/null) || webui_resp="000"
+        webui_resp=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 --noproxy '*' http://127.0.0.1:3000/ 2>/dev/null) || webui_resp="000"
         if [[ "$webui_resp" == "200" ]]; then
             result_warming "Open WebUI is accessible without checking for auth"
         fi
@@ -672,7 +672,7 @@ check_ssl_tls() {
                     local http_code
                     local probe_url_host
                     probe_url_host=$(format_http_host "$probe_host")
-                    http_code=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 "http://${probe_url_host}:${port}/" 2>/dev/null) || http_code="000"
+                    http_code=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 --noproxy '*' "http://${probe_url_host}:${port}/" 2>/dev/null) || http_code="000"
                     if [[ "$http_code" != "000" && -n "$http_code" ]]; then
                         result_cooked "Port ${port} is exposed on ${exposure_desc} over plain HTTP"
                         found_http=true

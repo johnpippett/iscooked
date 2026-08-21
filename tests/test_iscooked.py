@@ -841,3 +841,66 @@ esac
         )
         assert "UNKNOWN" in result.stdout_plain
         assert "incomplete" in result.stdout_plain.lower()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Proxy leak: local endpoint probes must bypass HTTP(S)_PROXY/ALL_PROXY
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# Mock curl that logs every invocation's full argument list (one line per call)
+# to the file named by $ISCOOKED_NOPROXY_LOG and answers 200 to anything.
+MOCK_CURL_LOGGING = '''\
+log="${ISCOOKED_NOPROXY_LOG:-}"
+if [ -n "$log" ]; then
+    echo "$*" >> "$log"
+fi
+echo "200"
+exit 0
+'''
+
+# Simulate a user environment that routes everything through a hostile proxy.
+PROXY_ENV = {
+    "HTTP_PROXY": "http://10.255.255.1:9",
+    "http_proxy": "http://10.255.255.1:9",
+    "ALL_PROXY": "http://10.255.255.1:9",
+}
+
+
+class TestLocalProbeNoProxy:
+    def test_check_api_auth_curl_probes_use_noproxy_star(self, tmp_path):
+        """Every check_api_auth curl probe must carry '--noproxy *' so a local
+        127.0.0.1 probe can never be forwarded to HTTP_PROXY/ALL_PROXY and leak
+        scan metadata to (or be spoofed by) an external proxy."""
+        logfile = tmp_path / "curl.args"
+        result = source_and_run(
+            "check_api_auth",
+            mocks={"curl": MOCK_CURL_LOGGING, "uname": 'echo Linux'},
+            env_vars=dict(PROXY_ENV, ISCOOKED_NOPROXY_LOG=str(logfile)),
+        )
+        assert result.returncode == 0
+        calls = logfile.read_text().splitlines()
+        # Ollama 11434, LM Studio 1234, Open WebUI 3000
+        assert len(calls) == 3
+        for args in calls:
+            assert "--noproxy *" in args, f"curl invoked without --noproxy '*': {args}"
+
+    def test_check_ssl_tls_curl_probe_uses_noproxy_star(self, tmp_path):
+        """The generic SSL/TLS HTTP probe must also carry '--noproxy *'."""
+        mock_ss = '''
+if [ "$1" = "-tlnp" ]; then
+    echo 'LISTEN 0 128 0.0.0.0:11434 users:(("ollama",pid=12345,fd=3))'
+fi
+'''
+        logfile = tmp_path / "curl.args"
+        result = source_and_run(
+            "check_ssl_tls",
+            mocks={"ss": mock_ss, "curl": MOCK_CURL_LOGGING, "uname": 'echo Linux'},
+            env_vars=dict(PROXY_ENV, ISCOOKED_NOPROXY_LOG=str(logfile)),
+        )
+        assert result.returncode == 0
+        calls = logfile.read_text().splitlines()
+        assert len(calls) >= 1
+        for args in calls:
+            assert "--noproxy *" in args, f"curl invoked without --noproxy '*': {args}"
+        assert any("http://127.0.0.1:11434/" in args for args in calls)
