@@ -591,7 +591,7 @@ check_firewall() {
         # iptables — check if any rules exist
         if command_exists iptables; then
             local rule_count
-            rule_count=$(iptables -L 2>/dev/null | grep -c -v -E "^Chain|^target|^$" || echo "0")
+            rule_count=$(iptables -L 2>/dev/null | grep -c -v -E "^Chain|^target|^$" || true)
             rule_count=$((rule_count + 0))
             if [[ "$rule_count" -gt 2 ]]; then
                 result_safe "iptables has ${rule_count} rules configured"
@@ -604,7 +604,7 @@ check_firewall() {
         # nftables
         if command_exists nft; then
             local nft_rules
-            nft_rules=$(nft list ruleset 2>/dev/null | wc -l || echo "0")
+            nft_rules=$(nft list ruleset 2>/dev/null | wc -l || true)
             nft_rules=$((nft_rules + 0))
             if [[ "$nft_rules" -gt 5 ]]; then
                 result_safe "nftables has rules configured"

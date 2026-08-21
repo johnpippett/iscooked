@@ -600,3 +600,63 @@ echo "Status: active"
             extra_path="/usr/bin:/bin",
         )
         assert "UFW firewall is active" in result.stdout_plain
+
+    def test_empty_iptables_ruleset_does_not_crash(self):
+        """An empty iptables ruleset (no matching lines) must NOT abort the scan.
+
+        grep -c prints "0" and exits 1 on no-match; the `|| echo "0"` fallback
+        then yields "0\n0", which crashes the subsequent arithmetic expansion.
+        """
+        mock_iptables = '''
+# no rules — iptables -L succeeds but emits only chain/table headers that
+# grep -v filters out, leaving zero counted lines.
+echo "Chain INPUT (policy ACCEPT)"
+echo "target     prot opt source               destination"
+'''
+        result = source_and_run(
+            "check_firewall",
+            mocks={"iptables": mock_iptables, "uname": 'echo Linux'},
+            extra_path="/usr/bin:/bin",
+        )
+        assert result.returncode == 0
+        assert "syntax error" not in result.stderr_plain.lower()
+        # Scanner still reaches its own summary line ("No active firewall detected!")
+        assert "No active firewall detected!" in result.stdout_plain
+
+    def test_inaccessible_iptables_ruleset_does_not_crash(self):
+        """An iptables call that fails (e.g. no permission) must be skipped, not crash.
+
+        The failed command emits nothing, so grep counts 0 lines; the fallback
+        must normalise to a single numeric value.
+        """
+        mock_iptables = '''
+echo "iptables: Permission denied (you must be root)" >&2
+exit 1
+'''
+        result = source_and_run(
+            "check_firewall",
+            mocks={"iptables": mock_iptables, "uname": 'echo Linux'},
+            extra_path="/usr/bin:/bin",
+        )
+        assert result.returncode == 0
+        assert "syntax error" not in result.stderr_plain.lower()
+        assert "No active firewall detected!" in result.stdout_plain
+
+    def test_inaccessible_nft_ruleset_does_not_crash(self):
+        """An nft call that fails under pipefail must normalise its count to one numeric value.
+
+        `nft list ruleset | wc -l` emits "0" but the pipeline exits nonzero on
+        failure; the `|| echo "0"` fallback would otherwise yield "0\n0".
+        """
+        mock_nft = '''
+echo "nft: Operation not permitted" >&2
+exit 1
+'''
+        result = source_and_run(
+            "check_firewall",
+            mocks={"nft": mock_nft, "uname": 'echo Linux'},
+            extra_path="/usr/bin:/bin",
+        )
+        assert result.returncode == 0
+        assert "syntax error" not in result.stderr_plain.lower()
+        assert "No active firewall detected!" in result.stdout_plain
