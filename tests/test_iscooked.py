@@ -660,3 +660,73 @@ exit 1
         assert result.returncode == 0
         assert "syntax error" not in result.stderr_plain.lower()
         assert "No active firewall detected!" in result.stdout_plain
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Inspection failure must never be reported SAFE
+# (model directory unreadable / docker mount inspect failure)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestModelPermissionsIncomplete:
+    @pytest.mark.skipif(os.geteuid() == 0, reason="permission bits not enforced as root")
+    def test_unreadable_model_dir_is_not_reported_safe(self):
+        """An unreadable model directory must NOT be reported SAFE; the scan must
+        say inspection was incomplete (SKIP) while continuing the scan/summary."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_dir = os.path.join(tmpdir, ".ollama", "models")
+            os.makedirs(model_dir, mode=0o755)
+            os.chmod(model_dir, 0o000)
+            try:
+                result = source_and_run(
+                    "check_model_permissions",
+                    env_vars={"HOME": tmpdir},
+                )
+            finally:
+                os.chmod(model_dir, 0o755)
+
+            assert "SAFE" not in result.stdout_plain
+            assert "world-readable" not in result.stdout_plain.lower()
+            assert "incomplete" in result.stdout_plain.lower()
+
+
+class TestDockerSensitiveMounts:
+    def test_home_mount_detected_when_not_last_and_has_trailing_delimiter(self):
+        """A `/home/<user>` mount must be detected even when it is NOT the last
+        mount source (old space-joined grep with `$` anchor missed it)."""
+        mock_docker = '''
+case "$1" in
+  info) exit 0 ;;
+  ps) echo "webui nogpu/open-webui" ;;
+  inspect)
+    case "$*" in
+      *'Config.User'*) echo "1000" ;;
+      *'Privileged'*) echo "false" ;;
+      *'NetworkMode'*) echo "default" ;;
+      *'{{"\\n"'*) printf '/home/alice\\n/data\\n' ;;
+      *) echo '/home/alice /data' ;;
+    esac
+    ;;
+esac
+'''
+        result = source_and_run(
+            "check_docker_risks",
+            mocks={"docker": mock_docker, "uname": 'echo Linux'},
+        )
+        assert "has sensitive host paths mounted" in result.stdout_plain
+
+    def test_docker_inspect_failure_reports_unknown_not_clean(self):
+        """If `docker inspect` fails, the mount check must report UNKNOWN rather
+        than silently reporting nothing/clean."""
+        mock_docker = '''
+case "$1" in
+  info) exit 0 ;;
+  ps) echo "webui nogpu/open-webui" ;;
+  *) echo "inspect failed" >&2; exit 1 ;;
+esac
+'''
+        result = source_and_run(
+            "check_docker_risks",
+            mocks={"docker": mock_docker, "uname": 'echo Linux'},
+        )
+        assert "UNKNOWN" in result.stdout_plain
+        assert "incomplete" in result.stdout_plain.lower()

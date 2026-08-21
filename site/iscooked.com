@@ -28,6 +28,7 @@ RESET='\033[0m'
 COOKED="${RED}${BOLD}🔥 COOKED${RESET}"
 WARMING="${YELLOW}⚠  WARMING UP${RESET}"
 SAFE="${GREEN}✅ SAFE${RESET}"
+UNKNOWN="${CYAN}❓ UNKNOWN${RESET}"
 
 # ─── State ──────────────────────────────────────────────────────────────────────
 
@@ -106,6 +107,15 @@ result_safe() {
 result_skip() {
     TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
     printf '%b  %s\n' "  ${DIM}⏭  SKIP${RESET}" "$(sanitize_result_message "$1")"
+}
+
+result_unknown() {
+    # Inspection could not be completed — explicitly report the gap instead of
+    # silently treating it as SAFE. Counted like a warning so the summary shows it.
+    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
+    WARMING_COUNT=$((WARMING_COUNT + 1))
+    SCORE=$((SCORE + 4))
+    printf '%b  %s\n' "  ${UNKNOWN}" "$(sanitize_result_message "$1")"
 }
 
 command_exists() {
@@ -346,9 +356,13 @@ ${brew_prefix}/var/ollama/models"
             found_models=true
             # Check if world-readable
             local world_readable
-            world_readable=$(find "$dir" -type f -perm -o+r 2>/dev/null | head -5 || true)
+            # Do not suppress find errors: an unreadable model dir must never be
+            # reported SAFE. If we cannot inspect it, say so explicitly.
+            world_readable=$(find "$dir" -type f -perm -o+r 2>/dev/null || true)
             if [[ -n "$world_readable" ]]; then
                 result_warming "Model directory ${dir} is world-readable"
+            elif [[ ! -r "$dir" || ! -x "$dir" ]]; then
+                result_skip "Model directory ${dir} is not readable — inspection incomplete, permissions unknown"
             else
                 result_safe "Model directory ${dir} has restrictive permissions"
             fi
@@ -416,10 +430,14 @@ check_docker_risks() {
             result_warming "Container '${cname}' is using host networking"
         fi
 
-        # Check mounted volumes for sensitive paths
+        # Check mounted volumes for sensitive paths. Each source is printed on its
+        # own line so `/home/<user>` is matched even when it is not the last mount
+        # (old space-joined grep with `$` anchor missed it), and so trailing
+        # delimiters cannot break the match.
         local mounts
-        mounts=$(docker inspect --format '{{range .Mounts}}{{.Source}} {{end}}' "$cname" 2>/dev/null || echo "")
-        if echo "$mounts" | grep -qE '(/etc|/root|/home/[^/]+$)'; then
+        if ! mounts=$(docker inspect --format '{{range .Mounts}}{{.Source}}{{"\n"}}{{end}}' "$cname" 2>/dev/null); then
+            result_unknown "Container '${cname}' mount inspection failed — sensitive path status UNKNOWN (inspection incomplete)"
+        elif echo "$mounts" | grep -qE '^(/etc|/root)(/|$)|^/home/[^/]+$'; then
             result_warming "Container '${cname}' has sensitive host paths mounted"
         fi
 
