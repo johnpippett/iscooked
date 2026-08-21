@@ -95,8 +95,8 @@ def run_with_mocks(mocks=None, env_vars=None, extra_path="/usr/bin:/bin"):
                 f"""#!/bin/bash
 set -euo pipefail
 # Source scanner functions without triggering main(), then restore mock PATH.
-sed '/^main "\\$@"$/d' "{SCRIPT_PATH}" > "$TMPDIR/iscooked_funcs.sh"
-source "$TMPDIR/iscooked_funcs.sh"
+sed '/^main "\\$@"$/d' "{SCRIPT_PATH}" > "{tmpdir}/iscooked_funcs.sh"
+source "{tmpdir}/iscooked_funcs.sh"
 export PATH="{tmpdir}:{extra_path}"
 OS_TYPE="${{ISCOOKED_TEST_OS_TYPE:-linux}}"
 main
@@ -138,8 +138,8 @@ def source_and_run(function_name, mocks=None, env_vars=None, extra_path="/usr/bi
                 f"""#!/bin/bash
 set -euo pipefail
 # Source scanner functions without triggering main()
-                sed '/^main "\\$@"$/d' "{SCRIPT_PATH}" > "$TMPDIR/iscooked_funcs.sh"
-source "$TMPDIR/iscooked_funcs.sh"
+                sed '/^main "\\$@"$/d' "{SCRIPT_PATH}" > "{tmpdir}/iscooked_funcs.sh"
+source "{tmpdir}/iscooked_funcs.sh"
 export PATH="{tmpdir}:{extra_path}"
 OS_TYPE="${{ISCOOKED_TEST_OS_TYPE:-linux}}"
 {function_name}

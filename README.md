@@ -42,16 +42,20 @@ chmod +x iscooked.com
   🔥 COOKED   Ollama (port 11434) is listening on ALL interfaces
   ✅ SAFE      LM Studio (port 1234) is bound to localhost only
   ⚠  WARMING UP  Ollama API is responding without authentication
+  🔥 COOKED   Model files are world-readable on disk
+  🔥 COOKED   AI container running as root with host networking
+  🔥 COOKED   NVIDIA device exposed to all local users
+  🔥 COOKED   .env file with API key is world-readable
   🔥 COOKED   No active firewall detected!
   🔥 COOKED   Shell history contains ~3 potential API key(s)
 
   YOUR COOKED SCORE
 
-  73% cooked  [██████████████████████████████          ]
+  74% cooked  [██████████████████████████████          ]
 
   FULLY COOKED
 
-  3 critical  1 warnings  2 passed
+  7 critical  1 warnings  2 passed
 
   You are absolutely cooked. Fix the critical issues above ASAP.
 ```
