@@ -274,13 +274,13 @@ check_network_exposure() {
         if [[ -n "$listen_line" ]]; then
             found_any=true
             if is_bound_all_interfaces "$listen_line" "$port"; then
-                result_cooked "${name} (port ${port}) is listening on ALL interfaces"
+                result_cooked "Unidentified service on port ${port} (commonly ${name}) is listening on ALL interfaces"
             elif is_bound_loopback_only "$listen_line" "$port"; then
-                result_safe "${name} (port ${port}) is bound to localhost only"
+                result_safe "Unidentified service on port ${port} (commonly ${name}) is bound to localhost only"
             else
                 local bind_host
                 bind_host=$(get_non_loopback_listen_host "$listen_line" "$port" || echo "non-loopback interface")
-                result_warming "${name} (port ${port}) is bound to non-loopback interface ${bind_host}"
+                result_warming "Unidentified service on port ${port} (commonly ${name}) is bound to non-loopback interface ${bind_host}"
             fi
         fi
     done <<< "$ai_ports"
