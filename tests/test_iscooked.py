@@ -688,6 +688,20 @@ class TestModelPermissionsIncomplete:
             assert "world-readable" not in result.stdout_plain.lower()
             assert "incomplete" in result.stdout_plain.lower()
 
+    def test_find_failure_is_not_reported_safe(self):
+        """A failed recursive find must produce an incomplete inspection result."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_dir = os.path.join(tmpdir, ".ollama", "models")
+            os.makedirs(model_dir)
+            result = source_and_run(
+                "check_model_permissions",
+                mocks={"find": "exit 1", "uname": 'echo Linux'},
+                env_vars={"HOME": tmpdir},
+            )
+
+        assert "SAFE" not in result.stdout_plain
+        assert "incomplete" in result.stdout_plain.lower()
+
 
 class TestDockerSensitiveMounts:
     def test_home_mount_detected_when_not_last_and_has_trailing_delimiter(self):

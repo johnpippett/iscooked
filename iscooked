@@ -354,12 +354,17 @@ ${brew_prefix}/var/ollama/models"
     while IFS= read -r dir; do
         if [[ -d "$dir" ]]; then
             found_models=true
-            # Check if world-readable
-            local world_readable
-            # Do not suppress find errors: an unreadable model dir must never be
-            # reported SAFE. If we cannot inspect it, say so explicitly.
-            world_readable=$(find "$dir" -type f -perm -o+r 2>/dev/null || true)
-            if [[ -n "$world_readable" ]]; then
+            # Check if world-readable. Keep the result bounded, but preserve the
+            # find exit status so an incomplete walk is never reported SAFE.
+            local world_readable find_status
+            if world_readable=$(find "$dir" -type f -perm -o+r 2>/dev/null | head -5); then
+                find_status=${PIPESTATUS[0]}
+            else
+                find_status=${PIPESTATUS[0]}
+            fi
+            if [[ "$find_status" -ne 0 ]]; then
+                result_skip "Model directory ${dir} — inspection incomplete, permissions unknown"
+            elif [[ -n "$world_readable" ]]; then
                 result_warming "Model directory ${dir} is world-readable"
             elif [[ ! -r "$dir" || ! -x "$dir" ]]; then
                 result_skip "Model directory ${dir} is not readable — inspection incomplete, permissions unknown"
