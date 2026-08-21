@@ -194,7 +194,7 @@ fi
             mocks={"ss": mock_ss, "uname": 'echo Linux'},
             extra_path="/usr/bin:/bin",
         )
-        assert "Ollama (port 11434)" in result.stdout_plain
+        assert "Unidentified service on port 11434 (commonly Ollama) is listening on ALL interfaces" in result.stdout_plain
 
     def test_bracketed_ipv6_any_address_is_all_interfaces(self):
         """A bracketed IPv6 any-address listener [::]:11434 is exposed on all interfaces."""
@@ -207,7 +207,7 @@ fi
             mocks={"ss": mock_ss, "uname": 'echo Linux'},
             extra_path="/usr/bin:/bin",
         )
-        assert "Ollama (port 11434) is listening on ALL interfaces" in result.stdout_plain
+        assert "Unidentified service on port 11434 (commonly Ollama) is listening on ALL interfaces" in result.stdout_plain
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -589,7 +589,83 @@ fi
             extra_path="/usr/bin:/bin",
         )
         assert "bound to localhost only" not in result.stdout_plain
-        assert "Ollama (port 11434) is bound to non-loopback interface 192.168.1.50" in result.stdout_plain
+        assert "Unidentified service on port 11434 (commonly Ollama) is bound to non-loopback interface 192.168.1.50" in result.stdout_plain
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Issue 14: service names must not be asserted as fact from port-only detection
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestPortWordingHedged:
+    """A listener on a known AI port (e.g. 3000) must be reported with hedged
+    wording: the service name is inferred from the port number alone, so the
+    output must call the service *unidentified* (commonly the known one) in
+    every result variant (ALL interfaces / loopback-only / non-loopback).
+    """
+
+    def test_all_interfaces_variant_hedged(self):
+        """0.0.0.0:3000 must NOT be claimed as Open WebUI fact; wording hedged."""
+        mock_ss = '''
+if [ "$1" = "-tlnp" ]; then
+    echo 'LISTEN 0 128 0.0.0.0:3000 users:(("node",pid=1234,fd=3))'
+fi
+'''
+        result = source_and_run(
+            "check_network_exposure",
+            mocks={"ss": mock_ss, "uname": 'echo Linux'},
+            extra_path="/usr/bin:/bin",
+        )
+        # The service name must NOT be asserted as fact for an inferred port.
+        assert "Open WebUI (port 3000)" not in result.stdout_plain
+        assert "Unidentified service on port 3000 (commonly Open WebUI) is listening on ALL interfaces" in result.stdout_plain
+
+    def test_loopback_only_variant_hedged(self):
+        """127.0.0.1:3000 must use the same hedged wording, not claim Open WebUI."""
+        mock_ss = '''
+if [ "$1" = "-tlnp" ]; then
+    echo 'LISTEN 0 128 127.0.0.1:3000 users:(("node",pid=1234,fd=3))'
+fi
+'''
+        result = source_and_run(
+            "check_network_exposure",
+            mocks={"ss": mock_ss, "uname": 'echo Linux'},
+            extra_path="/usr/bin:/bin",
+        )
+        assert "Open WebUI (port 3000)" not in result.stdout_plain
+        assert "Unidentified service on port 3000 (commonly Open WebUI) is bound to localhost only" in result.stdout_plain
+
+    def test_non_loopback_variant_hedged(self):
+        """A concrete LAN bind on port 3000 must hedge too (no Open WebUI claim)."""
+        mock_ss = '''
+if [ "$1" = "-tlnp" ]; then
+    echo 'LISTEN 0 128 192.168.1.50:3000 users:(("node",pid=1234,fd=3))'
+fi
+'''
+        result = source_and_run(
+            "check_network_exposure",
+            mocks={"ss": mock_ss, "uname": 'echo Linux'},
+            extra_path="/usr/bin:/bin",
+        )
+        assert "Open WebUI (port 3000)" not in result.stdout_plain
+        assert "Unidentified service on port 3000 (commonly Open WebUI) is bound to non-loopback interface 192.168.1.50" in result.stdout_plain
+
+    def test_loopback_only_wording_positive_control(self):
+        """Positive control: known service on loopback still reads sensibly
+        under the hedged wording (safe classification retained verbatim)."""
+        mock_ss = '''
+if [ "$1" = "-tlnp" ]; then
+    echo 'LISTEN 0 128 127.0.0.1:11434 users:(("ollama",pid=12345,fd=3))'
+fi
+'''
+        result = source_and_run(
+            "check_network_exposure",
+            mocks={"ss": mock_ss, "uname": 'echo Linux'},
+            extra_path="/usr/bin:/bin",
+        )
+        # Sensible full sentence: hedged identity + unmodified safe classification.
+        assert "Unidentified service on port 11434 (commonly Ollama) is bound to localhost only" in result.stdout_plain
+        assert "bound to localhost only" in result.stdout_plain
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -841,3 +917,66 @@ esac
         )
         assert "UNKNOWN" in result.stdout_plain
         assert "incomplete" in result.stdout_plain.lower()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Proxy leak: local endpoint probes must bypass HTTP(S)_PROXY/ALL_PROXY
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# Mock curl that logs every invocation's full argument list (one line per call)
+# to the file named by $ISCOOKED_NOPROXY_LOG and answers 200 to anything.
+MOCK_CURL_LOGGING = '''\
+log="${ISCOOKED_NOPROXY_LOG:-}"
+if [ -n "$log" ]; then
+    echo "$*" >> "$log"
+fi
+echo "200"
+exit 0
+'''
+
+# Simulate a user environment that routes everything through a hostile proxy.
+PROXY_ENV = {
+    "HTTP_PROXY": "http://10.255.255.1:9",
+    "http_proxy": "http://10.255.255.1:9",
+    "ALL_PROXY": "http://10.255.255.1:9",
+}
+
+
+class TestLocalProbeNoProxy:
+    def test_check_api_auth_curl_probes_use_noproxy_star(self, tmp_path):
+        """Every check_api_auth curl probe must carry '--noproxy *' so a local
+        127.0.0.1 probe can never be forwarded to HTTP_PROXY/ALL_PROXY and leak
+        scan metadata to (or be spoofed by) an external proxy."""
+        logfile = tmp_path / "curl.args"
+        result = source_and_run(
+            "check_api_auth",
+            mocks={"curl": MOCK_CURL_LOGGING, "uname": 'echo Linux'},
+            env_vars=dict(PROXY_ENV, ISCOOKED_NOPROXY_LOG=str(logfile)),
+        )
+        assert result.returncode == 0
+        calls = logfile.read_text().splitlines()
+        # Ollama 11434, LM Studio 1234, Open WebUI 3000
+        assert len(calls) == 3
+        for args in calls:
+            assert "--noproxy *" in args, f"curl invoked without --noproxy '*': {args}"
+
+    def test_check_ssl_tls_curl_probe_uses_noproxy_star(self, tmp_path):
+        """The generic SSL/TLS HTTP probe must also carry '--noproxy *'."""
+        mock_ss = '''
+if [ "$1" = "-tlnp" ]; then
+    echo 'LISTEN 0 128 0.0.0.0:11434 users:(("ollama",pid=12345,fd=3))'
+fi
+'''
+        logfile = tmp_path / "curl.args"
+        result = source_and_run(
+            "check_ssl_tls",
+            mocks={"ss": mock_ss, "curl": MOCK_CURL_LOGGING, "uname": 'echo Linux'},
+            env_vars=dict(PROXY_ENV, ISCOOKED_NOPROXY_LOG=str(logfile)),
+        )
+        assert result.returncode == 0
+        calls = logfile.read_text().splitlines()
+        assert len(calls) >= 1
+        for args in calls:
+            assert "--noproxy *" in args, f"curl invoked without --noproxy '*': {args}"
+        assert any("http://127.0.0.1:11434/" in args for args in calls)
