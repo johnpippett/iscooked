@@ -95,8 +95,8 @@ def run_with_mocks(mocks=None, env_vars=None, extra_path="/usr/bin:/bin"):
                 f"""#!/bin/bash
 set -euo pipefail
 # Source scanner functions without triggering main(), then restore mock PATH.
-sed '/^main "\\$@"$/d' "{SCRIPT_PATH}" > "$TMPDIR/iscooked_funcs.sh"
-source "$TMPDIR/iscooked_funcs.sh"
+sed '/^main "\\$@"$/d' "{SCRIPT_PATH}" > "{tmpdir}/iscooked_funcs.sh"
+source "{tmpdir}/iscooked_funcs.sh"
 export PATH="{tmpdir}:{extra_path}"
 OS_TYPE="${{ISCOOKED_TEST_OS_TYPE:-linux}}"
 main
@@ -138,8 +138,8 @@ def source_and_run(function_name, mocks=None, env_vars=None, extra_path="/usr/bi
                 f"""#!/bin/bash
 set -euo pipefail
 # Source scanner functions without triggering main()
-                sed '/^main "\\$@"$/d' "{SCRIPT_PATH}" > "$TMPDIR/iscooked_funcs.sh"
-source "$TMPDIR/iscooked_funcs.sh"
+                sed '/^main "\\$@"$/d' "{SCRIPT_PATH}" > "{tmpdir}/iscooked_funcs.sh"
+source "{tmpdir}/iscooked_funcs.sh"
 export PATH="{tmpdir}:{extra_path}"
 OS_TYPE="${{ISCOOKED_TEST_OS_TYPE:-linux}}"
 {function_name}
@@ -236,6 +236,30 @@ class TestTelemetry:
         )
         assert "OLLAMA_NOPRUNE" not in result.stdout_plain
         assert "OLLAMA_NO_CLOUD" not in result.stdout_plain
+
+    def test_dnt_unset_emits_no_message(self):
+        """Issue #15: when DO_NOT_TRACK is unset, emit NOTHING about it.
+
+        The unset case must neither warm nor add to the score, so no
+        warning/cooked line mentioning DO_NOT_TRACK may appear in output.
+        (Explicitly set it to empty so the test is not affected by the
+        runner environment.)
+        """
+        result = source_and_run(
+            "check_telemetry",
+            mocks={"uname": 'echo Linux'},
+            env_vars={"DO_NOT_TRACK": ""},
+        )
+        assert "DO_NOT_TRACK" not in result.stdout_plain
+
+    def test_dnt_set_still_emits_safe_message(self):
+        """DO_NOT_TRACK=1 should still be reported as the existing safe message."""
+        result = source_and_run(
+            "check_telemetry",
+            mocks={"uname": 'echo Linux'},
+            env_vars={"DO_NOT_TRACK": "1"},
+        )
+        assert "DO_NOT_TRACK=1 is set (good!)" in result.stdout_plain
 
     def test_ss_not_grepped_for_telemetry_domains(self):
         """The script must NOT call ss/netstat to grep for telemetry hostnames."""
@@ -473,6 +497,33 @@ class TestModelPermissions:
                 env_vars={"HOME": tmpdir},
             )
             assert "world-readable" in result.stdout_plain.lower()
+
+    def test_many_world_readable_files_not_reported_incomplete(self):
+        """A model dir with hundreds of world-readable files (find output larger
+        than the pipe buffer) must be reported world-readable, never falsely
+        'inspection incomplete'. Regression for issue #19: the old
+        `find ... | head -5` under pipefail let head close the pipe before find
+        finished, find died on SIGPIPE (141), and the dir was misreported as
+        incomplete. Uses the real find, no mock."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            nested_dir = os.path.join(tmpdir, ".ollama", "models", "blobs")
+            os.makedirs(nested_dir, mode=0o755)
+            # Enough files with long names so the find stream far exceeds the
+            # ~64KB pipe buffer, forcing find to block until head closes.
+            for i in range(900):
+                fname = "sha256-{:04d}-{}".format(i, "w" * 90)
+                fpath = os.path.join(nested_dir, fname)
+                with open(fpath, "w") as f:
+                    f.write("mock model weights")
+                os.chmod(fpath, 0o644)
+
+            result = source_and_run(
+                "check_model_permissions",
+                env_vars={"HOME": tmpdir},
+            )
+
+        assert "world-readable" in result.stdout_plain.lower()
+        assert "inspection incomplete" not in result.stdout_plain.lower()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -718,6 +769,52 @@ case "$1" in
       *'NetworkMode'*) echo "default" ;;
       *'{{"\\n"'*) printf '/home/alice\\n/data\\n' ;;
       *) echo '/home/alice /data' ;;
+    esac
+    ;;
+esac
+'''
+        result = source_and_run(
+            "check_docker_risks",
+            mocks={"docker": mock_docker, "uname": 'echo Linux'},
+        )
+        assert "has sensitive host paths mounted" in result.stdout_plain
+
+    def test_home_subdirectory_dotssh_mount_flagged(self):
+        """A `/home/<user>/.ssh` mount must be flagged as a sensitive host path
+        (old `^/home/[^/]+$` anchor only matched the literal top-level dir)."""
+        mock_docker = '''
+case "$1" in
+  info) exit 0 ;;
+  ps) echo "webui nogpu/open-webui" ;;
+  inspect)
+    case "$*" in
+      *'Config.User'*) echo "1000" ;;
+      *'Privileged'*) echo "false" ;;
+      *'NetworkMode'*) echo "default" ;;
+      *'{{range .Mounts'*) printf '%s\\n' '/home/alice/.ssh' '/data' ;;
+    esac
+    ;;
+esac
+'''
+        result = source_and_run(
+            "check_docker_risks",
+            mocks={"docker": mock_docker, "uname": 'echo Linux'},
+        )
+        assert "has sensitive host paths mounted" in result.stdout_plain
+
+    def test_home_subdirectory_documents_mount_flagged(self):
+        """A `/home/<user>/Documents` mount must be flagged as a sensitive host
+        path even when it is not the first/only mount source."""
+        mock_docker = '''
+case "$1" in
+  info) exit 0 ;;
+  ps) echo "webui nogpu/open-webui" ;;
+  inspect)
+    case "$*" in
+      *'Config.User'*) echo "1000" ;;
+      *'Privileged'*) echo "false" ;;
+      *'NetworkMode'*) echo "default" ;;
+      *'{{range .Mounts'*) printf '%s\\n' '/data' '/home/alice/Documents' ;;
     esac
     ;;
 esac
