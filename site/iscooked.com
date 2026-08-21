@@ -354,22 +354,22 @@ ${brew_prefix}/var/ollama/models"
     while IFS= read -r dir; do
         if [[ -d "$dir" ]]; then
             found_models=true
-            # Check if world-readable. Keep the result bounded, but preserve the
-            # find exit status so an incomplete walk is never reported SAFE.
-            local world_readable find_status
-            if world_readable=$(find "$dir" -type f -perm -o+r 2>/dev/null | head -5); then
-                find_status=${PIPESTATUS[0]}
+            # Check if world-readable. Consume the whole find stream via wc -l
+            # (bounded: a single count) so find never hits SIGPIPE — the old
+            # `| head -5` closed the pipe early, killing find under pipefail and
+            # misreporting large dirs as "inspection incomplete". A genuine find
+            # failure (non-zero exit, e.g. permission error) still reports skip.
+            local wr_count
+            if wr_count=$(find "$dir" -type f -perm -o+r 2>/dev/null | wc -l); then
+                if [[ "$wr_count" -gt 0 ]]; then
+                    result_warming "Model directory ${dir} is world-readable (${wr_count} files)"
+                elif [[ ! -r "$dir" || ! -x "$dir" ]]; then
+                    result_skip "Model directory ${dir} is not readable — inspection incomplete, permissions unknown"
+                else
+                    result_safe "Model directory ${dir} has restrictive permissions"
+                fi
             else
-                find_status=${PIPESTATUS[0]}
-            fi
-            if [[ "$find_status" -ne 0 ]]; then
                 result_skip "Model directory ${dir} — inspection incomplete, permissions unknown"
-            elif [[ -n "$world_readable" ]]; then
-                result_warming "Model directory ${dir} is world-readable"
-            elif [[ ! -r "$dir" || ! -x "$dir" ]]; then
-                result_skip "Model directory ${dir} is not readable — inspection incomplete, permissions unknown"
-            else
-                result_safe "Model directory ${dir} has restrictive permissions"
             fi
 
             # Check if world-writable

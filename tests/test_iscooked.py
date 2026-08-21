@@ -474,6 +474,33 @@ class TestModelPermissions:
             )
             assert "world-readable" in result.stdout_plain.lower()
 
+    def test_many_world_readable_files_not_reported_incomplete(self):
+        """A model dir with hundreds of world-readable files (find output larger
+        than the pipe buffer) must be reported world-readable, never falsely
+        'inspection incomplete'. Regression for issue #19: the old
+        `find ... | head -5` under pipefail let head close the pipe before find
+        finished, find died on SIGPIPE (141), and the dir was misreported as
+        incomplete. Uses the real find, no mock."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            nested_dir = os.path.join(tmpdir, ".ollama", "models", "blobs")
+            os.makedirs(nested_dir, mode=0o755)
+            # Enough files with long names so the find stream far exceeds the
+            # ~64KB pipe buffer, forcing find to block until head closes.
+            for i in range(900):
+                fname = "sha256-{:04d}-{}".format(i, "w" * 90)
+                fpath = os.path.join(nested_dir, fname)
+                with open(fpath, "w") as f:
+                    f.write("mock model weights")
+                os.chmod(fpath, 0o644)
+
+            result = source_and_run(
+                "check_model_permissions",
+                env_vars={"HOME": tmpdir},
+            )
+
+        assert "world-readable" in result.stdout_plain.lower()
+        assert "inspection incomplete" not in result.stdout_plain.lower()
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Finding 4: untrusted output must not be interpreted as terminal controls
