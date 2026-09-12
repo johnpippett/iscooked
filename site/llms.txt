@@ -1,0 +1,35 @@
+# IsCooked
+
+> A local security scanner for Ollama, LM Studio, and self-hosted AI setups.
+
+## Run the scanner
+
+The canonical Bash source URL is https://iscooked.com/iscooked.com.
+
+```bash
+curl -fsSL https://iscooked.com/iscooked.com | bash
+```
+
+To download and inspect the source before running:
+
+```bash
+curl -fsSL https://iscooked.com/iscooked.com -o iscooked.com
+less iscooked.com
+bash iscooked.com
+```
+
+Requires Bash 4+ and standard Unix tools. Python 3 is optional for structured
+configuration, API, browser, and model-code checks; curl is needed for HTTP probes.
+Missing optional tools cause skipped checks. Elevated privileges can improve some
+firewall and port checks. The scanner runs locally and sends no telemetry;
+it probes local AI services on localhost or their local bind addresses.
+
+Older pages may advertise /i. That path is a compatibility redirect to the
+canonical script URL above; use the canonical URL in new instructions.
+
+## Links
+
+- [Homepage](https://iscooked.com/): Overview, checks, and example output.
+- [Bash source](https://iscooked.com/iscooked.com): The scanner, not an HTML page.
+- [Repository and README](https://github.com/johnpippett/iscooked): Requirements,
+  usage, scoring, and source code.

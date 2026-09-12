@@ -120,7 +120,13 @@ main
         return result
 
 
-def source_and_run(function_name, mocks=None, env_vars=None, extra_path="/usr/bin:/bin"):
+def source_and_run(
+    function_name,
+    mocks=None,
+    env_vars=None,
+    extra_path="/usr/bin:/bin",
+    function_mocks=None,
+):
     """Source the scanner (without running main) and call a single function."""
     with tempfile.TemporaryDirectory() as tmpdir:
         if mocks:
@@ -129,6 +135,13 @@ def source_and_run(function_name, mocks=None, env_vars=None, extra_path="/usr/bi
                 with open(path, "w") as f:
                     f.write(f"#!/bin/sh\n{content}")
                 os.chmod(path, 0o755)
+
+        shell_function_mocks = ""
+        if function_mocks:
+            shell_function_mocks = "\n".join(
+                f"function {name}() {{\n{content}\n}}"
+                for name, content in function_mocks.items()
+            )
 
         # Write a wrapper that sources the script (minus the main call), restores
         # mock PATH after script PATH hardening, and invokes the requested function.
@@ -140,6 +153,7 @@ set -euo pipefail
 # Source scanner functions without triggering main()
                 sed '/^main "\\$@"$/d' "{SCRIPT_PATH}" > "{tmpdir}/iscooked_funcs.sh"
 source "{tmpdir}/iscooked_funcs.sh"
+{shell_function_mocks}
 export PATH="{tmpdir}:{extra_path}"
 OS_TYPE="${{ISCOOKED_TEST_OS_TYPE:-linux}}"
 {function_name}
@@ -373,7 +387,7 @@ class TestApiAuth:
         """Local OLLAMA_AUTH/API_KEY env vars do not prove the responding Ollama API enforces auth."""
         mock_curl = '''
 if echo "$@" | grep -q "http://127.0.0.1:11434/"; then
-    echo "200"
+    printf '%s\\n%s' '{"models":[]}' '200'
     exit 0
 fi
 echo "000"
@@ -386,7 +400,7 @@ exit 0
             extra_path="/usr/bin:/bin",
         )
         assert "Ollama API is responding with auth configured" not in result.stdout_plain
-        assert "Ollama API is responding without authentication" in result.stdout_plain
+        assert "Ollama /api/tags on port 11434 accessible without authentication" in result.stdout_plain
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -702,6 +716,22 @@ exit 0
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def linux_firewall_mocks(**overrides):
+    """Provide deterministic installed-but-inactive Linux firewall backends."""
+    mocks = {
+        "ufw": 'echo "Status: inactive"',
+        "firewall-cmd": "exit 252",
+        "iptables": (
+            'echo "Chain INPUT (policy ACCEPT)"\n'
+            'echo "target     prot opt source               destination"'
+        ),
+        "nft": "exit 0",
+        "uname": "echo Linux",
+    }
+    mocks.update(overrides)
+    return mocks
+
+
 class TestFirewall:
     def test_ufw_inactive_is_not_reported_active(self):
         """`Status: inactive` contains `active` but must not be treated as active."""
@@ -710,7 +740,7 @@ echo "Status: inactive"
 '''
         result = source_and_run(
             "check_firewall",
-            mocks={"ufw": mock_ufw, "uname": 'echo Linux'},
+            mocks=linux_firewall_mocks(ufw=mock_ufw),
             extra_path="/usr/bin:/bin",
         )
         assert "UFW firewall is active" not in result.stdout_plain
@@ -723,7 +753,7 @@ echo "Status: active"
 '''
         result = source_and_run(
             "check_firewall",
-            mocks={"ufw": mock_ufw, "uname": 'echo Linux'},
+            mocks=linux_firewall_mocks(ufw=mock_ufw),
             extra_path="/usr/bin:/bin",
         )
         assert "UFW firewall is active" in result.stdout_plain
@@ -742,7 +772,7 @@ echo "target     prot opt source               destination"
 '''
         result = source_and_run(
             "check_firewall",
-            mocks={"iptables": mock_iptables, "uname": 'echo Linux'},
+            mocks=linux_firewall_mocks(iptables=mock_iptables),
             extra_path="/usr/bin:/bin",
         )
         assert result.returncode == 0
@@ -751,42 +781,246 @@ echo "target     prot opt source               destination"
         assert "No active firewall detected!" in result.stdout_plain
 
     def test_inaccessible_iptables_ruleset_does_not_crash(self):
-        """An iptables call that fails (e.g. no permission) must be skipped, not crash.
-
-        The failed command emits nothing, so grep counts 0 lines; the fallback
-        must normalise to a single numeric value.
-        """
+        """A failed iptables inspection must be UNKNOWN, not no firewall."""
         mock_iptables = '''
 echo "iptables: Permission denied (you must be root)" >&2
 exit 1
 '''
         result = source_and_run(
             "check_firewall",
-            mocks={"iptables": mock_iptables, "uname": 'echo Linux'},
+            mocks=linux_firewall_mocks(iptables=mock_iptables),
             extra_path="/usr/bin:/bin",
         )
         assert result.returncode == 0
         assert "syntax error" not in result.stderr_plain.lower()
-        assert "No active firewall detected!" in result.stdout_plain
+        assert "UNKNOWN" in result.stdout_plain
+        assert "iptables ruleset inspection failed" in result.stdout_plain
+        assert "No active firewall detected!" not in result.stdout_plain
 
     def test_inaccessible_nft_ruleset_does_not_crash(self):
-        """An nft call that fails under pipefail must normalise its count to one numeric value.
-
-        `nft list ruleset | wc -l` emits "0" but the pipeline exits nonzero on
-        failure; the `|| echo "0"` fallback would otherwise yield "0\n0".
-        """
+        """A failed nft inspection must be UNKNOWN, not no firewall."""
         mock_nft = '''
 echo "nft: Operation not permitted" >&2
 exit 1
 '''
         result = source_and_run(
             "check_firewall",
-            mocks={"nft": mock_nft, "uname": 'echo Linux'},
+            mocks=linux_firewall_mocks(nft=mock_nft),
             extra_path="/usr/bin:/bin",
         )
         assert result.returncode == 0
         assert "syntax error" not in result.stderr_plain.lower()
-        assert "No active firewall detected!" in result.stdout_plain
+        assert "UNKNOWN" in result.stdout_plain
+        assert "nftables ruleset inspection failed" in result.stdout_plain
+        assert "No active firewall detected!" not in result.stdout_plain
+
+    def test_ufw_inspection_failure_is_unknown(self):
+        mock_ufw = '''
+echo "ERROR: You need to be root to run this script" >&2
+exit 1
+'''
+        result = source_and_run(
+            "check_firewall",
+            mocks=linux_firewall_mocks(ufw=mock_ufw),
+            extra_path="/usr/bin:/bin",
+        )
+
+        assert result.returncode == 0, result.stderr_plain
+        assert "UNKNOWN" in result.stdout_plain
+        assert "UFW status inspection failed" in result.stdout_plain
+        assert "UFW is installed but INACTIVE" not in result.stdout_plain
+        assert "No active firewall detected!" not in result.stdout_plain
+
+    def test_ufw_unrecognized_successful_output_is_unknown(self):
+        result = source_and_run(
+            "check_firewall",
+            mocks=linux_firewall_mocks(ufw='echo "Status: mystery"'),
+            extra_path="/usr/bin:/bin",
+        )
+
+        assert result.returncode == 0, result.stderr_plain
+        assert "UNKNOWN" in result.stdout_plain
+        assert "UFW returned an unrecognized status" in result.stdout_plain
+        assert "No active firewall detected!" not in result.stdout_plain
+
+    @pytest.mark.parametrize("exit_code", [251, 253, 1])
+    def test_firewalld_non_inactive_failure_is_unknown(self, exit_code):
+        result = source_and_run(
+            "check_firewall",
+            mocks=linux_firewall_mocks(**{"firewall-cmd": f"exit {exit_code}"}),
+            extra_path="/usr/bin:/bin",
+        )
+
+        assert result.returncode == 0, result.stderr_plain
+        assert "UNKNOWN" in result.stdout_plain
+        assert f"firewalld status inspection failed (exit {exit_code})" in result.stdout_plain
+        assert "firewalld is installed but INACTIVE" not in result.stdout_plain
+        assert "No active firewall detected!" not in result.stdout_plain
+
+    def test_firewalld_zero_exit_is_active(self):
+        result = source_and_run(
+            "check_firewall",
+            mocks=linux_firewall_mocks(**{"firewall-cmd": 'echo "running"'}),
+            extra_path="/usr/bin:/bin",
+        )
+
+        assert result.returncode == 0, result.stderr_plain
+        assert "firewalld is active" in result.stdout_plain
+        assert "firewalld status inspection failed" not in result.stdout_plain
+
+    def test_firewalld_not_running_exit_is_inactive(self):
+        result = source_and_run(
+            "check_firewall",
+            mocks=linux_firewall_mocks(**{"firewall-cmd": "exit 252"}),
+            extra_path="/usr/bin:/bin",
+        )
+
+        assert result.returncode == 0, result.stderr_plain
+        assert "firewalld is installed but INACTIVE" in result.stdout_plain
+        assert "firewalld status inspection failed" not in result.stdout_plain
+
+    def test_failed_backend_is_unknown_even_when_ufw_is_active(self):
+        result = source_and_run(
+            "check_firewall",
+            mocks=linux_firewall_mocks(
+                ufw='echo "Status: active"',
+                nft='echo "nft: Operation not permitted" >&2\nexit 1',
+            ),
+            extra_path="/usr/bin:/bin",
+        )
+
+        assert result.returncode == 0, result.stderr_plain
+        assert "UFW firewall is active" in result.stdout_plain
+        assert "nftables ruleset inspection failed" in result.stdout_plain
+        assert "UNKNOWN" in result.stdout_plain
+        assert "No active firewall detected!" not in result.stdout_plain
+
+    def test_macos_application_firewall_failure_is_unknown(self):
+        result = source_and_run(
+            "check_firewall",
+            mocks={"pfctl": 'echo "Status: Disabled"'},
+            env_vars={"ISCOOKED_TEST_OS_TYPE": "macos"},
+            function_mocks={
+                "/usr/libexec/ApplicationFirewall/socketfilterfw": "return 1"
+            },
+            extra_path="/usr/bin:/bin",
+        )
+
+        assert result.returncode == 0, result.stderr_plain
+        assert "UNKNOWN" in result.stdout_plain
+        assert "macOS Application Firewall status inspection failed" in result.stdout_plain
+        assert "macOS Application Firewall is DISABLED" not in result.stdout_plain
+        assert "No active firewall detected!" not in result.stdout_plain
+
+    @pytest.mark.parametrize(
+        ("socket_status", "expected_message"),
+        [
+            ("Firewall is enabled. (State = 1)", "macOS Application Firewall is enabled"),
+            ("Firewall is disabled. (State = 0)", "macOS Application Firewall is DISABLED"),
+        ],
+    )
+    def test_macos_application_firewall_recognizes_known_states(
+        self, socket_status, expected_message
+    ):
+        result = source_and_run(
+            "check_firewall",
+            mocks={"pfctl": 'echo "Status: Disabled"'},
+            env_vars={"ISCOOKED_TEST_OS_TYPE": "macos"},
+            function_mocks={
+                "/usr/libexec/ApplicationFirewall/socketfilterfw": (
+                    f'echo "{socket_status}"'
+                )
+            },
+            extra_path="/usr/bin:/bin",
+        )
+
+        assert result.returncode == 0, result.stderr_plain
+        assert expected_message in result.stdout_plain
+        assert "Application Firewall status inspection failed" not in result.stdout_plain
+
+    def test_macos_application_firewall_unrecognized_output_is_unknown(self):
+        result = source_and_run(
+            "check_firewall",
+            mocks={"pfctl": 'echo "Status: Disabled"'},
+            env_vars={"ISCOOKED_TEST_OS_TYPE": "macos"},
+            function_mocks={
+                "/usr/libexec/ApplicationFirewall/socketfilterfw": (
+                    'echo "Firewall state unavailable"'
+                )
+            },
+            extra_path="/usr/bin:/bin",
+        )
+
+        assert result.returncode == 0, result.stderr_plain
+        assert "UNKNOWN" in result.stdout_plain
+        assert "Application Firewall returned an unrecognized status" in result.stdout_plain
+        assert "No active firewall detected!" not in result.stdout_plain
+
+    def test_macos_pf_failure_is_unknown(self):
+        result = source_and_run(
+            "check_firewall",
+            mocks={"pfctl": "exit 1"},
+            env_vars={"ISCOOKED_TEST_OS_TYPE": "macos"},
+            function_mocks={
+                "/usr/libexec/ApplicationFirewall/socketfilterfw": (
+                    'echo "Firewall is disabled. (State = 0)"'
+                )
+            },
+            extra_path="/usr/bin:/bin",
+        )
+
+        assert result.returncode == 0, result.stderr_plain
+        assert "UNKNOWN" in result.stdout_plain
+        assert "macOS pf status inspection failed" in result.stdout_plain
+        assert "No active firewall detected!" not in result.stdout_plain
+
+    @pytest.mark.parametrize(
+        ("pf_status", "expected_message"),
+        [
+            (
+                "Status: Enabled for 0 days 00:12:34           Debug: Urgent",
+                "macOS pf (packet filter) is enabled",
+            ),
+            (
+                "Status: Disabled for 0 days 00:12:34           Debug: Urgent",
+                "No active firewall detected!",
+            ),
+        ],
+    )
+    def test_macos_pf_recognizes_known_states(self, pf_status, expected_message):
+        result = source_and_run(
+            "check_firewall",
+            mocks={"pfctl": f'echo "{pf_status}"'},
+            env_vars={"ISCOOKED_TEST_OS_TYPE": "macos"},
+            function_mocks={
+                "/usr/libexec/ApplicationFirewall/socketfilterfw": (
+                    'echo "Firewall is disabled. (State = 0)"'
+                )
+            },
+            extra_path="/usr/bin:/bin",
+        )
+
+        assert result.returncode == 0, result.stderr_plain
+        assert expected_message in result.stdout_plain
+        assert "macOS pf status inspection failed" not in result.stdout_plain
+
+    def test_macos_pf_unrecognized_output_is_unknown(self):
+        result = source_and_run(
+            "check_firewall",
+            mocks={"pfctl": 'echo "Status: Mystery"'},
+            env_vars={"ISCOOKED_TEST_OS_TYPE": "macos"},
+            function_mocks={
+                "/usr/libexec/ApplicationFirewall/socketfilterfw": (
+                    'echo "Firewall is disabled. (State = 0)"'
+                )
+            },
+            extra_path="/usr/bin:/bin",
+        )
+
+        assert result.returncode == 0, result.stderr_plain
+        assert "UNKNOWN" in result.stdout_plain
+        assert "macOS pf returned an unrecognized status" in result.stdout_plain
+        assert "No active firewall detected!" not in result.stdout_plain
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Inspection failure must never be reported SAFE
@@ -828,6 +1062,57 @@ class TestModelPermissionsIncomplete:
 
         assert "SAFE" not in result.stdout_plain
         assert "incomplete" in result.stdout_plain.lower()
+
+
+class TestDockerContainerUser:
+    @pytest.mark.parametrize(
+        ("configured_user", "expected_result"),
+        [
+            ("", "COOKED"),
+            ("root", "COOKED"),
+            ("root:root", "COOKED"),
+            ("root:staff", "COOKED"),
+            ("0", "COOKED"),
+            ("0:0", "COOKED"),
+            ("0:1000", "COOKED"),
+            ("alice", "SAFE"),
+            ("alice:staff", "SAFE"),
+            ("alice:root", "SAFE"),
+            ("1000", "SAFE"),
+            ("1000:1000", "SAFE"),
+            ("1000:0", "SAFE"),
+        ],
+    )
+    def test_config_user_classification_uses_user_before_group(
+        self, configured_user, expected_result
+    ):
+        """Docker Config.User USER[:GROUP] values must classify by USER."""
+        mock_docker = f'''
+case "$1" in
+  info) exit 0 ;;
+  ps) echo "webui nogpu/open-webui" ;;
+  inspect)
+    case "$*" in
+      *'Config.User'*) echo "{configured_user}" ;;
+      *'Privileged'*) echo "false" ;;
+      *'NetworkMode'*) echo "default" ;;
+      *'{{{{range .Mounts'*) exit 0 ;;
+    esac
+    ;;
+esac
+'''
+        result = source_and_run(
+            "check_docker_risks",
+            mocks={"docker": mock_docker, "uname": "echo Linux"},
+        )
+
+        assert result.returncode == 0, result.stderr_plain
+        user_result = next(
+            line
+            for line in result.stdout_plain.splitlines()
+            if "Container 'webui' is running as" in line
+        )
+        assert expected_result in user_result
 
 
 class TestDockerSensitiveMounts:
@@ -955,8 +1240,8 @@ class TestLocalProbeNoProxy:
             env_vars=dict(PROXY_ENV, ISCOOKED_NOPROXY_LOG=str(logfile)),
         )
         assert result.returncode == 0
-        calls = logfile.read_text().splitlines()
-        # Ollama 11434, LM Studio 1234, Open WebUI 3000
+        calls = logfile.read_text().replace("\n%{http_code}", " %{http_code}").splitlines()
+        # Ollama 11434, LM Studio 1234, vLLM 8000
         assert len(calls) == 3
         for args in calls:
             assert "--noproxy *" in args, f"curl invoked without --noproxy '*': {args}"

@@ -1,0 +1,10 @@
+/iscooked.com
+  Content-Type: text/plain; charset=utf-8
+  X-Content-Type-Options: nosniff
+
+/llms.txt
+  Content-Type: text/plain; charset=utf-8
+  X-Content-Type-Options: nosniff
+
+/assets/iscooked-logo-256-v1.webp
+  Cache-Control: public, max-age=31536000, immutable
