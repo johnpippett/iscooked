@@ -1,171 +1,218 @@
-# 🔥 iscooked.com — Am I Cooked?
+# 🔥 iscooked — Am I Cooked?
 
 [![GitHub stars](https://img.shields.io/github/stars/johnpippett/iscooked?style=social)](https://github.com/johnpippett/iscooked)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-1.1.0-blue)](https://github.com/johnpippett/iscooked/releases)
+[![Version](https://img.shields.io/badge/version-1.2.0-blue)](https://github.com/johnpippett/iscooked/releases)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos-lightgrey)](https://github.com/johnpippett/iscooked)
 
-**Local AI security scanner.** One command to find out if your Ollama, LM Studio, or self-hosted LLM setup is leaking like a sieve.
+`iscooked` is a local security scanner for AI services, containers, and agent settings.
+It runs as one Bash script and keeps the report on your machine.
+
+## Start a scan
+
+The scanner needs Bash 4 or later. Some macOS installations provide Bash 3.2.
+Check your Bash version first:
+
+```bash
+bash --version
+```
+
+To download, read, and run the scanner:
+
+```bash
+curl -fsSL https://iscooked.com/iscooked.com -o iscooked.com
+less iscooked.com
+bash iscooked.com
+```
+
+If you want one command after you trust the source:
 
 ```bash
 curl -fsSL https://iscooked.com/iscooked.com | bash
 ```
 
-Or download and run manually:
+You can also run a local checkout:
 
 ```bash
-wget https://iscooked.com/iscooked.com
-chmod +x iscooked.com
-./iscooked.com
-```
-
-## What it checks
-
-| Check | What it looks for |
-|---|---|
-| **Network Exposure** | AI services listening on 0.0.0.0 instead of localhost |
-| **API Authentication** | Read-only model-list endpoints for identified Ollama, LM Studio, and vLLM services |
-| **File Permissions** | Model files and directories world-readable/writable |
-| **Docker Risks** | Root users, privileged mode, host networking, Docker daemon sockets, and host-root mounts |
-| **GPU Exposure** | NVIDIA/AMD device permissions and management endpoints |
-| **Telemetry** | Active connections to known telemetry domains |
-| **Firewall Status** | UFW, firewalld, iptables, nftables — is anything running? |
-| **SSL/TLS** | AI services exposed over plain HTTP on non-localhost |
-| **Process Audit** | AI processes and what user they're running as |
-| **Sensitive Files** | .env files with API keys readable by other users |
-| **History & Logs** | API keys leaked in shell history, world-readable log dirs |
-| **Ollama Config** | OLLAMA_HOST, OLLAMA_ORIGINS, systemd service checks |
-| **Browser Control** | Browser remote-debugging listeners, including non-default ports |
-| **MCP Configuration** | Broad filesystem grants and local configuration permission risks |
-| **Agent Gateways** | OpenClaw gateway authentication and tool-access configuration |
-| **Model Code Execution** | Recognized running model servers allowing remote model code |
-
-## Example output
-
-```
-  🔥 COOKED   Ollama (port 11434) is listening on ALL interfaces
-  ✅ SAFE      LM Studio (port 1234) is bound to localhost only
-  ⚠  WARMING UP  Ollama API is responding without authentication
-  🔥 COOKED   Model files are world-readable on disk
-  🔥 COOKED   AI container running as root with host networking
-  🔥 COOKED   NVIDIA device exposed to all local users
-  🔥 COOKED   .env file with API key is world-readable
-  🔥 COOKED   No active firewall detected!
-  🔥 COOKED   Shell history contains ~3 potential API key(s)
-
-  YOUR COOKED SCORE
-
-  74% cooked  [██████████████████████████████          ]
-
-  FULLY COOKED
-
-  7 critical  1 warnings  2 passed
-
-  You are absolutely cooked. Fix the critical issues above ASAP.
+git clone https://github.com/johnpippett/iscooked.git
+cd iscooked
+bash iscooked --help
+bash iscooked
 ```
 
 ## Scoring
 
-Your **cooked score** ranges from 0–100%:
+The terminal shows a cooked percentage, a 40-character meter, a verdict, and result counts.
+This example is synthetic. It does not scan your machine.
 
-- **0–14%** — **Looking Fresh.** Your setup is locked down.
-- **15–39%** — **Slightly Warm.** A few things to tighten up.
-- **40–69%** — **Medium Rare.** Address those warnings.
-- **70–100%** — **Fully Cooked.** Fix the critical issues now.
+```text
+YOUR COOKED SCORE
+
+20% cooked  [▒▒▒▒▒▒▒▒                                ]
+
+SLIGHTLY WARM
+
+0 critical  1 warnings  4 passed
+4 unknown  9 skipped  (18 results)
+
+Turn down the heat. Check the warnings above.
+```
+
+In this example, one warning and four unknown results add 20 points. Nine skipped results add no points. Start with critical findings. Then review warnings, unknown results, and skipped areas.
+
+The score is a capped heuristic. It is not a probability of compromise.
+
+| Result | Terminal label | Points |
+|---|---|---:|
+| Critical | `🔥 COOKED` | +10 |
+| Warning | `⚠  WARMING UP` | +4 |
+| Passed | `✅ SAFE` | +0 |
+| Unknown | `❓ UNKNOWN` | +4 |
+| Skipped | `⏭  SKIP` | +0 |
+
+| Score | Verdict |
+|---:|---|
+| 0–14 | `LOOKING FRESH` |
+| 15–39 | `SLIGHTLY WARM` |
+| 40–69 | `MEDIUM RARE` |
+| 70–100 | `FULLY COOKED` |
+
+A critical finding or warning can change a low-score verdict to `SLIGHTLY WARM`. A report with only unknown or skipped results can show `STILL DEFROSTING`. The scanner keeps unknown and skipped counts visible.
+
+## What it checks
+
+The scanner has 16 check areas:
+
+| ID | Check area | Looks for |
+|---:|---|---|
+| 01 | Network Exposure | Common AI service ports and listener bind addresses. |
+| 02 | API Authentication | Authentication on selected model-list routes for identified Ollama, LM Studio, and vLLM services. |
+| 03 | Model File Permissions | World-readable or world-writable files in common model directories. |
+| 04 | Docker / Container Risks | Root users, privileged mode, host networking, daemon sockets, and host-root mounts. |
+| 05 | GPU Driver Exposure | GPU device permissions and known management listeners. |
+| 06 | Telemetry / Phoning Home | Scanner opt-out values and exact known entries in `/etc/hosts`. |
+| 07 | Firewall Status | Recognized Linux and macOS firewall backends and their reported state. |
+| 08 | SSL/TLS Configuration | Plain HTTP on non-loopback AI service listeners. |
+| 09 | AI Process Enumeration | Candidate AI processes and the account that runs each process. |
+| 10 | Sensitive File Exposure | World-readable `.env` files that contain common API key names. |
+| 11 | History & Logs Leakage | API key patterns in shell history and permissions on common AI log directories. |
+| 12 | Ollama-Specific Checks | `OLLAMA_HOST`, `OLLAMA_ORIGINS`, and selected service settings. |
+| 13 | Browser Remote Debugging | Chromium-family debugging flags, listeners, and `/json/version` metadata. |
+| 14 | MCP Configuration | Selected Model Context Protocol client files, filesystem grants, and permissions. |
+| 15 | Agent Gateway Configuration | Supported OpenClaw gateway, tool, sandbox, and direct-message settings. |
+| 16 | Remote Model Code | Remote-code flags in recognized vLLM and Text Generation Inference launches. |
+
+## Unknown and skipped results
+
+`UNKNOWN` means that the scanner could not establish a state. `SKIP` means that it did not examine an area. A missing optional tool or unsupported setup can cause a skip. A failed observation can cause an unknown result.
+
+Unknown results add four points. Skipped results add no points. Both results limit coverage. Use the [unknown-results guide](site/unknowns.html) for diagnostic commands and manual checks for firewall, Docker, network, browser, file, agent, model, and environment results.
 
 ## Requirements
 
-- Bash 4+
-- Standard Unix tools (ss/netstat, ps, stat, find)
-- Optional: Python 3 (for structured API, browser, MCP, gateway, and model-code checks), `curl` (for API/browser probes), `docker` (for container checks), `nvidia-smi` (for GPU checks)
-- Docker metadata calls use `timeout`, `gtimeout`, or Python 3 to enforce a five-second timeout. If none is available, container inspection is reported as incomplete.
-- Elevated privileges can improve some firewall and port checks
+| Type | Requirement |
+|---|---|
+| System | Linux or macOS. |
+| Shell | Bash 4 or later. Some macOS installations provide Bash 3.2. |
+| Required commands | `awk`, `basename`, `cat`, `find`, `grep`, `ps`, `stat`, `tr`, `uname`, `wc`, and `whoami`. |
+| Home directory | `HOME` must name an existing absolute directory. |
+| Socket evidence | `ss` or `netstat`. Missing tools produce skipped results. Failed inspection produces unknown results. |
+| Optional checks | Python 3 enables JSON and structured API, browser, MCP, agent-gateway, and model-code checks. `curl`, `docker`, and `nvidia-smi` enable related probes. |
+| Docker timeout | Docker metadata calls use `timeout`, `gtimeout`, or Python 3 for a five-second limit. |
 
-## Agent-check coverage
+Run `bash --version` to examine the shell version. Elevated privileges can improve some firewall and port checks.
 
-The scanner remains one downloadable Bash file. Optional checks report `SKIP`
-when their dependencies or supported configurations are absent. It never starts
-an MCP server, loads a model, or executes a configured agent to inspect it.
+## CLI
 
-- **API authentication:** `/api/tags` on port 11434 and `/v1/models` on ports
-  1234/8000. Service identity and model-list metadata are checked before reporting
-  unauthenticated access. A 401/403 conclusion applies only to the probed route,
-  not every endpoint of the service. Unknown services are not labeled as AI
-  merely because they occupy a familiar port. Requests do not follow redirects
-  or use configured proxies; each has a five-second total timeout.
-- **Docker access:** known Docker socket paths, the active Unix daemon endpoint,
-  and host-root mounts. An identified rootful daemon socket mounted in a root container with
-  no user-namespace isolation is critical. Rootless, proxy, or uncertain access
-  warns. A read-only socket mount does not make Docker API operations read-only.
-- **MCP:** Claude Desktop JSON configuration on Linux/macOS, Claude Code's
-  `.mcp.json` in the current directory and `~/.claude.json`, and Cursor's user
-  and current-project `.cursor/mcp.json`. The scanner recognizes explicit
-  filesystem-server grants and known shell-server configuration. It checks
-  configuration access without printing credentials. Other clients, unresolved
-  variables, and permissions it cannot establish are reported as limited or
-  incomplete coverage.
-- **Browser control:** known Chromium-family processes with a network debugging
-  flag are correlated with listening sockets and `/json/version` metadata.
-  Custom ports, IPv4/IPv6, and pipe-only debugging are distinguished. Metadata
-  requests never retrieve tabs or cookies or connect to a returned WebSocket URL.
-  A non-loopback bind establishes local network exposure, not internet reachability.
-- **OpenClaw:** strict JSON at `~/.openclaw/openclaw.json` or the literal path in
-  `OPENCLAW_CONFIG_PATH`. Checks explicit gateway bind/auth settings and supported
-  global tool/sandbox settings with Telegram/WhatsApp DM policies. JSON5,
-  includes, interpolation, per-agent/provider/sender overrides, and unsupported
-  channel policies are reported as incomplete. The scanner does not execute
-  OpenClaw's policy resolver or verify enforcement of a configured token.
-- **Model code:** recognized running `vllm serve`, Python vLLM API-server module,
-  and `text-generation-launcher` (TGI) command lines. Explicit remote-code flags
-  warn even when an immutable code revision is specified. A model weights
-  revision alone does not verify a code pin. Config files, process environment
-  variables, and other runtimes are not inspected; absent/disabled command-line
-  flags receive a scoped skip rather than a guarantee about runtime behavior.
+For a downloaded scanner, use `bash iscooked.com [options]`. For a local checkout, use `bash iscooked [options]`.
 
-Configuration findings describe settings, not proof that an agent is running
-or that malicious code has executed. The cooked score is an additive heuristic,
-not a probability of compromise: critical findings add 10 points; warnings and
-inconclusive (`UNKNOWN`) findings add 4. The score is capped at 100. A skipped
-check adds no points and does not establish that its area is safe. Distinct
-risks, such as an exposed listener and its missing API authentication, can both
-contribute to the score.
+| Option | Action |
+|---|---|
+| `-h`, `--help` | Show help without a scan. |
+| `--version` | Show the scanner version without a scan. |
+| `--json` | Write one JSON report. Requires Python 3. |
+| `--no-color` | Disable terminal colors. |
+| `--fail-on LEVEL` | Select the findings that produce exit status 1. Use `critical`, `warning`, or `unknown`. |
+
+The scanner also disables colors when output is redirected, when `NO_COLOR` is set, or when `TERM=dumb`.
+
+## JSON reports
+
+`--json` writes one report to standard output. It uses `schema_version: 1` and sets `completed: true` after the report is complete. A report contains scanner metadata, the platform, summary counts, score data, coverage counts, and a `findings` array.
+
+Each finding contains a check ID and title, a status, a message, and points. Check IDs identify areas. They do not identify stable rules. Messages can change between releases. The score includes a capped `value` and an uncapped `raw_value`; its `kind` is `heuristic` and it includes unknown results.
+
+Coverage counts distinct areas with observations, unknown results, and skipped results. These groups can overlap. An area can start without complete coverage. Reports can contain local paths and account names. Examine a report before you share it.
+
+Example commands:
+
+```bash
+bash iscooked.com --help
+bash iscooked.com --version
+bash iscooked.com --no-color
+bash iscooked.com --json > report.json
+bash iscooked.com --json --fail-on critical > report.json
+```
+
+## Exit status
+
+Without `--fail-on`, a completed scan returns `0` regardless of its findings. With a failure policy, the scanner returns `1` when the selected results occur:
+
+| Policy | Exit status `1` for |
+|---|---|
+| `critical` | Critical findings. |
+| `warning` | Critical findings or warnings. |
+| `unknown` | Critical findings, warnings, or unknown results. |
+
+Skipped results do not trigger these policies. Invalid options, missing required tools, unsupported systems, invalid `HOME`, and unsupported requirements return `2` before the scan. A runtime error can stop a scan before a complete JSON report. JSON consumers must require `completed: true`.
+
+## Coverage limits
+
+The scanner reads local files, process information, listener data, and selected service metadata. It does not change settings, start an MCP server or agent, or load a model. It does not execute model code, retrieve browser tabs or cookies, or connect to a returned WebSocket URL.
+
+Common ports, process names, container names, and paths are identification hints. They do not prove internet reachability or confirm every application identity. A non-loopback listener shows local network exposure. It does not prove internet exposure.
+
+API checks cover `/api/tags` on port `11434` and `/v1/models` on ports `1234` and `8000`. The scanner confirms service identity before it reports API access. It tests one route at a time, does not follow redirects or configured proxies, and uses a five-second total timeout.
+
+Most file checks use Unix mode bits. They do not establish access through every parent directory, access control list, or service boundary. The sensitive-file search stops after 20 files in each bounded search.
+
+The telemetry check reads values in the scanner environment and known host mappings. It does not establish the environment of a running service or analyze outbound traffic. `OLLAMA_NO_CLOUD` false values do not establish an opt-out. The Ollama check separates scanner variables from active service settings.
+
+MCP and OpenClaw checks cover selected files and supported JSON settings. Other clients, JSON5, includes, interpolation, unsupported overrides, and policy enforcement remain incomplete. Remote model-code checks cover recognized vLLM and Text Generation Inference command lines. They do not inspect configuration files, environment variables, or other runtimes. A model weights revision does not prove an executable code pin.
+
+Docker checks inspect known socket paths, the active Unix daemon endpoint, and host-root mounts. A read-only Docker socket mount can still permit daemon API calls. Rootless, proxy, and uncertain access can remain warning or unknown results.
 
 ## Privacy
 
-iscooked.com runs **entirely on your machine**. It sends no telemetry and phones home to absolutely nobody. The only network activity is checking whether local AI services are reachable on localhost or on the local bind address they already expose.
+After download, the scan sends no scan report or telemetry to iscooked.com or another remote service. It probes selected local AI and browser endpoints. Reports can contain local paths and account names, so examine them before sharing.
 
-## Contributing
+## Develop and test
 
-### Versioning
-
-`VERSION` is the release version source. For a release, run:
+Run the test suite and the release checks from the repository root:
 
 ```bash
-python3 scripts/sync_version.py 1.2.0
+python3 -m pytest -q
+bash -n iscooked
+bash -n site/iscooked.com
+cmp iscooked site/iscooked.com
+python3 scripts/sync_version.py --check
+git diff --check
 ```
 
-This updates `VERSION`, both standalone scanner copies, the website badge and
-terminal demo, and this README's badge. Run without a version to synchronize
-after editing `VERSION` directly. Versioning happens during preparation; the
-downloaded scanner needs no additional file or network request.
+The tests use synthetic fixtures and isolated state. They do not prove behavior on every Linux or macOS installation.
 
-Before publishing, run `python3 scripts/sync_version.py --check` and the test
-suite. The check detects stale versions without writing files, and the test
-suite includes it. Use patch bumps for fixes, minor bumps for compatible new
-checks, and major bumps for breaking changes. A bump does not deploy or tag a release.
+To preview the local website, run:
 
-PRs welcome! Some ideas:
+```bash
+python3 scripts/preview.py
+```
 
-- [ ] Add checks for more AI tools (KoboldCpp, TabbyAPI, Whisper, etc.)
-- [ ] JSON output mode for CI/CD integration
-- [ ] Auto-fix mode for common issues
-- [ ] macOS-specific checks
-- [ ] WSL-specific checks
+Then open `http://127.0.0.1:8794`. The preview serves `site/` and does not run the scanner.
+
+`VERSION` is the release version source. Run `python3 scripts/sync_version.py` without an argument after editing `VERSION`. Pass a stable `MAJOR.MINOR.PATCH` value to update `VERSION`, both scanner copies, website labels, and this README badge. Run `python3 scripts/sync_version.py --check` to detect drift without writing files.
 
 ## License
 
-MIT — do whatever you want with it.
+[MIT License](LICENSE)
 
----
-
-Built by a cybersecurity engineer who runs local LLMs. [iscooked.com](https://iscooked.com)
+[iscooked.com](https://iscooked.com) · [GitHub repository](https://github.com/johnpippett/iscooked)

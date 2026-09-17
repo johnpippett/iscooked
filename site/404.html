@@ -1,14 +1,50 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="robots" content="noindex">
-  <title>Page not found — IsCooked</title>
-</head>
-<body>
-  <h1>Page not found</h1>
-  <p>Visit the <a href="/">IsCooked homepage</a> for current instructions.</p>
-  <p>The scanner source is at <a href="/iscooked.com">/iscooked.com</a>.</p>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#f5f4ef" />
+    <title>Page not found — iscooked</title>
+    <link
+      rel="icon"
+      type="image/webp"
+      href="/assets/iscooked-logo-256-v1.webp"
+    />
+    <link rel="stylesheet" href="/assets/theme.css?v=3" />
+  </head>
+  <body class="error-page">
+    <header class="site-header container">
+      <a class="brand" href="/" aria-label="iscooked home"
+        ><img
+          src="/assets/iscooked-logo-256-v1.webp"
+          alt=""
+          width="48"
+          height="48"
+        /><span>iscooked<span class="brand-dot">.</span></span></a
+      >
+    </header>
+    <main class="container error-content">
+      <p class="error-code">404 / PAGE NOT FOUND</p>
+      <h1>This page<br />is missing.</h1>
+      <p>
+        The scanner is still here. Return to the homepage for instructions, or
+        open the source.
+      </p>
+      <div class="hero-actions">
+        <a class="button button-primary" href="/"
+          >Back to the homepage <span aria-hidden="true">↗</span></a
+        ><a class="text-link" href="/iscooked.com"
+          >Read the scanner source <span aria-hidden="true">↗</span></a
+        >
+      </div>
+    </main>
+    <footer class="container site-footer">
+      <a class="brand footer-brand" href="/"
+        >iscooked<span class="brand-dot">.</span></a
+      >
+      <p>Built by <a href="https://pippett.me/">pippett.me</a></p>
+      <a href="https://github.com/johnpippett/iscooked">View on GitHub</a>
+    </footer>
+  </body>
 </html>

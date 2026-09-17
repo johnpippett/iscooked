@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f5f4ef" />
+    <title>Resolve unknown results — iscooked</title>
+    <meta name="description" content="Understand unknown scanner results. Find the cause, examine permissions and dependencies, and learn which checks need manual review." />
+    <link rel="canonical" href="https://iscooked.com/unknowns" />
+    <link rel="icon" type="image/webp" href="./assets/iscooked-logo-256-v1.webp" />
+    <link rel="stylesheet" href="./assets/theme.css?v=3" />
+    <link rel="stylesheet" href="./assets/guide.css?v=1" />
+  </head>
+  <body class="guide-page">
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <nav class="container nav" aria-label="Main navigation">
+        <a class="brand" href="./index.html" aria-label="iscooked home"><img src="./assets/iscooked-logo-256-v1.webp" alt="" width="48" height="48" /><span>iscooked<span class="brand-dot">.</span></span></a>
+        <div class="nav-links">
+          <a class="github-link" href="https://github.com/johnpippett/iscooked">GitHub <span aria-hidden="true">↗</span></a>
+          <a class="button button-small button-outline" href="./index.html#install">Run a scan <span aria-hidden="true">↗</span></a>
+        </div>
+      </nav>
+    </header>
+    <main id="main" tabindex="-1">
+      <header class="container guide-hero">
+        <p class="guide-eyebrow">Scanner guide / Unknown results</p>
+        <h1>Unknown results.<br /><span>What to do next.</span></h1>
+        <p class="guide-lead">An <strong>UNKNOWN</strong> result means the scanner could not reach a conclusion. Find the message below to understand what prevented the check.</p>
+        <div class="guide-statuses">
+          <div><span class="guide-status-label">UNKNOWN</span><p>Evidence is incomplete. A command may have failed, or a setting may be unsupported. This does not confirm a vulnerability.</p></div>
+          <div><span class="guide-status-label">SKIP</span><p>The check did not run or found no supported target. A missing optional tool can cause this result. It does not establish safety.</p></div>
+        </div>
+      </header>
+      <div class="container guide-layout">
+        <aside class="guide-sidebar">
+          <nav aria-label="On this page">
+            <p class="guide-eyebrow">Find your check</p>
+            <a href="#start">Start here</a>
+            <a href="#firewall">01 <span>Firewall</span></a>
+            <a href="#docker">02 <span>Docker</span></a>
+            <a href="#network">03 <span>Network &amp; browser</span></a>
+            <a href="#files">04 <span>Files &amp; permissions</span></a>
+            <a href="#configuration">05 <span>MCP &amp; OpenClaw</span></a>
+            <a href="#runtime">06 <span>Models &amp; environment</span></a>
+            <a href="#rerun">Run the scan again <span aria-hidden="true">↗</span></a>
+          </nav>
+        </aside>
+        <div class="guide-content">
+          <section id="start" class="guide-section" aria-labelledby="start-heading">
+            <h2 id="start-heading">Start with the exact message.</h2>
+            <ol>
+              <li>Find the check name and its complete <code>UNKNOWN</code> message in your terminal report.</li>
+              <li>Run diagnostics as the same user, on the same machine, and from the same project directory.</li>
+              <li>Use the matching section below. Then run the scanner again.</li>
+            </ol>
+            <p>Project location matters for MCP configuration. The user account and <code>HOME</code> determine which personal files the scanner examines.</p>
+            <details class="guide-detail">
+              <summary>A tool is missing or a check was skipped</summary>
+              <div>
+                <p>Use your operating system's package manager to install the missing tool named in the result.</p>
+                <ul>
+                  <li><strong>Python 3:</strong> structured API, browser, MCP, OpenClaw, and model-code checks.</li>
+                  <li><strong>curl:</strong> local HTTP probes.</li>
+                  <li><strong>ss or netstat:</strong> network listeners. The scanner supports the corresponding Linux or macOS output.</li>
+                  <li><strong>timeout, gtimeout, or Python 3:</strong> a time limit for Docker metadata commands.</li>
+                </ul>
+                <p>The scanner uses standard system paths, plus <code>/opt/homebrew/bin</code> and <code>/opt/homebrew/sbin</code> on macOS. Shell aliases and tools found only in a virtual environment can be unavailable.</p>
+                <p>If you do not use the product named in a skipped check, installation is not necessary.</p>
+                <p>Missing firewall tools produce <code>UNKNOWN</code>. Missing required system tools stop the scan. Adding an optional tool does not correct an existing command failure.</p>
+              </div>
+            </details>
+            <div class="guide-note"><strong>Some results need manual review.</strong><p>The scanner cannot read every configuration or infer every active setting. A manual check does not update the scanner report.</p></div>
+          </section>
+
+          <section id="firewall" class="guide-section" aria-labelledby="firewall-heading">
+            <p class="guide-eyebrow">01 / System access</p>
+            <h2 id="firewall-heading">Firewall inspection failed</h2>
+            <p class="guide-message">“ruleset inspection failed” · “status inspection failed” · “No supported firewall inspection tool”</p>
+            <p>Firewall status commands can require administrator access. The scanner reports a failed command as unknown.</p>
+            <p>Run only the status command for your existing firewall. These commands read status or rules; they do not change them.</p>
+            <p>First run the command without <code>sudo</code> to reproduce the scanner's access. For a permission error, an administrator can repeat that status command with <code>sudo</code>.</p>
+            <details class="guide-detail">
+              <summary>Linux status commands</summary>
+              <div class="guide-command-list">
+                <p><strong>nftables</strong></p><pre><code>nft list ruleset</code></pre>
+                <p><strong>iptables</strong></p><pre><code>iptables -L</code></pre>
+                <p><strong>UFW</strong></p><pre><code>ufw status</code></pre>
+                <p><strong>firewalld</strong></p><pre><code>firewall-cmd --state</code></pre>
+                <p>If access is denied, ask the system administrator to examine the result. “Not running” describes an inactive service, not a successful protection check.</p>
+              </div>
+            </details>
+            <details class="guide-detail">
+              <summary>macOS status commands</summary>
+              <div class="guide-command-list">
+                <p><strong>Application Firewall</strong></p><pre><code>/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate</code></pre>
+                <p><strong>Packet filter (pf)</strong></p><pre><code>pfctl -s info</code></pre>
+              </div>
+            </details>
+            <p>If a tool is missing, use the inspection tool for the firewall you already manage. Installing a second firewall is not necessary.</p>
+            <p>Other firewall products need manual review. Installing a dependency does not add support for them.</p>
+            <p class="guide-outcome"><strong>What resolves it:</strong> the scanner must receive a successful, recognized response. Administrator-only results can remain unknown in a normal-user scan.</p>
+            <p>Keep manual firewall evidence separately. Running the entire scanner with <code>sudo</code> can change its user, home directory, and configuration context.</p>
+          </section>
+
+          <section id="docker" class="guide-section" aria-labelledby="docker-heading">
+            <p class="guide-eyebrow">02 / Containers</p>
+            <h2 id="docker-heading">Docker is unreachable or incomplete</h2>
+            <p class="guide-message">“Docker daemon inspection incomplete” · “container inventory UNKNOWN” · container user, mount, or network status unknown</p>
+            <p>The Docker daemon can be stopped, inaccessible, or too slow. A container can also disappear during inspection.</p>
+            <ol>
+              <li>Examine the active Docker context.</li>
+              <li>Make sure it identifies the daemon you intend to examine.</li>
+              <li>Request daemon metadata as your normal user.</li>
+            </ol>
+            <pre><code>docker context show
+docker info --format '{{json .SecurityOptions}}'
+docker ps --format '{{.Names}} {{.Image}}'</code></pre>
+            <p><code>DOCKER_HOST</code> or <code>DOCKER_CONTEXT</code> can change the selected daemon. Make sure these variables match the intended environment.</p>
+            <p>Press <kbd>Ctrl</kbd> + <kbd>C</kbd> if a diagnostic command stops responding. The scanner limits each Docker metadata command to five seconds.</p>
+            <p>If you normally use Docker Desktop, make sure it is running. Otherwise, examine your managed Docker service and its access error.</p>
+            <p>At least one of <code>timeout</code>, <code>gtimeout</code>, or <code>python3</code> must be available to the scanner.</p>
+            <p>Do not make the Docker socket writable by everyone. Membership in the <code>docker</code> group grants root-level access; it is not a routine scanner fix. <a href="https://docs.docker.com/engine/install/linux-postinstall/">Docker access documentation</a>.</p>
+            <p class="guide-outcome"><strong>What resolves it:</strong> the selected daemon and container metadata must be readable within the time limit. If valid metadata remains unsupported, manual review is necessary.</p>
+          </section>
+
+          <section id="network" class="guide-section" aria-labelledby="network-heading">
+            <p class="guide-eyebrow">03 / Local services</p>
+            <h2 id="network-heading">Network, API, or browser evidence is incomplete</h2>
+            <p class="guide-message">“listener inspection failed” · “authentication inconclusive” · “plain HTTP probe was inconclusive” · browser inspection failed</p>
+            <details class="guide-detail">
+              <summary>Listener or process inspection failed</summary>
+              <div>
+                <p>Run the command for your operating system to see its error.</p>
+                <p><strong>Linux</strong></p><pre><code>ss -tlnp</code></pre>
+                <p><strong>macOS</strong></p><pre><code>netstat -an -ptcp</code></pre>
+                <p><strong>General process access, either system</strong></p><pre><code>ps -eo pid,user,comm</code></pre>
+                <p>This tests basic process access. The scanner also reads arguments. Restricted argument access can still cause unknown results.</p>
+                <p>Inspect process arguments locally if necessary. They can contain credentials; do not paste them into a public report.</p>
+                <p>Missing tools cause skipped checks. Permission errors or failed inspection commands can cause unknown results.</p>
+                <p>If you ran the scanner inside a container or restricted terminal, run it on the host you intend to examine.</p>
+              </div>
+            </details>
+            <details class="guide-detail">
+              <summary>An API returns a redirect, error, or unexpected response</summary>
+              <div>
+                <p>The scanner probes supported model-list routes. It does not follow redirects, supply credentials, or use configured proxies.</p>
+                <p>Examine the named service's status and logs. Make sure the service normally serves the reported port and route.</p>
+                <p>Each request has a five-second limit. A stopped service, startup delay, TLS endpoint, proxy, or different API can prevent identification.</p>
+                <p>Keep authentication and TLS enabled. Do not expose a service to make the probe succeed.</p>
+                <p>An unsupported endpoint needs manual review. A successful authenticated application session does not establish unauthenticated API access.</p>
+              </div>
+            </details>
+            <details class="guide-detail">
+              <summary>A browser debugging check is incomplete</summary>
+              <div>
+                <p>The check needs Python 3, process information, listener information, and supported browser metadata.</p>
+                <p>Examine the browser's existing launch configuration. A dynamic port, inaccessible process, or unrecognized response can prevent correlation.</p>
+                <p>Do not enable remote debugging for this check. Pipe-only debugging does not require a network port.</p>
+              </div>
+            </details>
+            <p class="guide-outcome"><strong>What resolves it:</strong> successful command output and supported service metadata. Protected or unsupported endpoints can require manual review.</p>
+          </section>
+
+          <section id="files" class="guide-section" aria-labelledby="files-heading">
+            <p class="guide-eyebrow">04 / Local files</p>
+            <h2 id="files-heading">A file or directory cannot be examined</h2>
+            <p class="guide-message">“permission inspection failed” · “search incomplete” · “Secret scan failed” · history, owner, or telemetry hosts-file inspection failed</p>
+            <p>These results can affect model directories, <code>.env</code> files, shell history, logs, GPU devices, and <code>/etc/hosts</code>.</p>
+            <ol>
+              <li>Locate the exact path named in the result.</li>
+              <li>Make sure the path still exists and belongs to the expected account.</li>
+              <li>Examine its access permissions and the permissions of its parent directories.</li>
+            </ol>
+            <p>Replace the example path before you run this command:</p>
+            <pre><code>ls -ld "/path/from/the/finding"</code></pre>
+            <p>If ownership is incorrect, ask the owner or administrator to correct it. Keep secret files private; do not use <code>chmod 777</code>.</p>
+            <p>Some files are intentionally inaccessible. Do not expose credentials or history to complete a scan.</p>
+            <p class="guide-outcome"><strong>What resolves it:</strong> the same user must be able to read the required metadata or content. Extended permissions, access control lists, and search limits can still require manual review.</p>
+          </section>
+
+          <section id="configuration" class="guide-section" aria-labelledby="configuration-heading">
+            <p class="guide-eyebrow">05 / Agent configuration</p>
+            <h2 id="configuration-heading">MCP or OpenClaw settings are unsupported</h2>
+            <p class="guide-message">“configuration inaccessible” · “malformed” · “unsupported” · “unresolved variables” · “inspection incomplete”</p>
+            <p>Python 3 enables these parsers. It does not add support for every configuration format.</p>
+            <details class="guide-detail">
+              <summary>MCP: files, grants, and access permissions</summary>
+              <div>
+                <p>Run from the project you want to examine. The scanner reads selected Claude Desktop, Claude Code, and Cursor JSON files.</p>
+                <ul>
+                  <li><strong>Unreadable or malformed:</strong> examine the named file locally. Correct an actual JSON error using the client's documented format.</li>
+                  <li><strong>Variables or relative grants:</strong> examine the resolved path and the server's working directory in the client.</li>
+                  <li><strong>ACL or symlink:</strong> examine the target and its effective permissions. The scanner may still need manual review.</li>
+                  <li><strong>Unsupported structure or limit:</strong> the check does not support every server entry, file size, or project count.</li>
+                </ul>
+                <p>Do not start an MCP server just to inspect it. Keep valid client configuration intact when the scanner cannot interpret it.</p>
+              </div>
+            </details>
+            <details class="guide-detail">
+              <summary>OpenClaw: strict JSON and runtime policy</summary>
+              <div>
+                <p>The check reads <code>~/.openclaw/openclaw.json</code>, or the literal path in <code>OPENCLAW_CONFIG_PATH</code>.</p>
+                <p>It supports strict JSON and selected policy fields. JSON5, includes, variables, and unsupported agent, provider, sender, or channel policies remain incomplete.</p>
+                <p>Verify that the path identifies the active configuration. Manually examine the documented runtime settings and policy. Do not start an agent to complete this check.</p>
+                <p>Automatic or Tailscale-based binding can require runtime evidence. The scanner does not resolve every bind mode or verify token enforcement.</p>
+                <p>Do not convert a valid configuration only to remove an unknown result. Do not remove authentication, sandbox settings, or policy overrides.</p>
+              </div>
+            </details>
+            <p>Both parsers limit configuration files to 1 MiB. Some valid configurations exceed the scanner's coverage.</p>
+            <p class="guide-outcome"><strong>What resolves it:</strong> readable, supported configuration. Unsupported syntax, unresolved settings, or parser limits require manual review or a scanner improvement.</p>
+          </section>
+
+          <section id="runtime" class="guide-section" aria-labelledby="runtime-heading">
+            <p class="guide-eyebrow">06 / Active settings</p>
+            <h2 id="runtime-heading">Model or environment settings cannot be inferred</h2>
+            <p class="guide-message">“could not establish active remote-code configuration” · “OLLAMA_HOST requires address resolution” · “OLLAMA_NO_CLOUD has an unrecognized value”</p>
+            <details class="guide-detail">
+              <summary>Remote model code</summary>
+              <div>
+                <p>The scanner recognizes selected vLLM and TGI launch commands. Wrappers, hidden arguments, and settings loaded from code can prevent a conclusion.</p>
+                <p>Examine the active service configuration and model-loading code. Establish the effective remote-code setting from those sources.</p>
+                <p>Do not enable remote code or load an untrusted model to complete this check.</p>
+              </div>
+            </details>
+            <details class="guide-detail">
+              <summary>Ollama and telemetry environment</summary>
+              <div>
+                <p>A hostname or unsupported URL form in <code>OLLAMA_HOST</code> can prevent the scanner from classifying the bind address.</p>
+                <p>Examine the running service's effective bind address. If its service file is unreadable, ask its administrator to verify the service user.</p>
+                <p>For <code>OLLAMA_NO_CLOUD</code>, use a documented boolean value appropriate for the intended setting. <a href="https://docs.ollama.com/faq">Ollama cloud configuration</a>.</p>
+                <p>The scanner recognizes <code>1</code> and <code>true</code> as enabled. Recognized false values give no cloud opt-out evidence; the check can report skipped.</p>
+                <p>Shell variables do not establish a running service's environment. Cloud opt-out evidence does not prove that every outbound connection is blocked.</p>
+              </div>
+            </details>
+            <p class="guide-outcome"><strong>What resolves it:</strong> supported launch arguments or recognized environment values. Runtime behavior outside these observations needs manual review.</p>
+          </section>
+
+          <section id="rerun" class="guide-section guide-rerun" aria-labelledby="rerun-heading">
+            <p class="guide-eyebrow">Verify the result</p>
+            <h2 id="rerun-heading">Run the scan again.</h2>
+            <p>Use the same account and project directory after you correct the cause.</p>
+            <p><strong>From a repository checkout</strong></p>
+            <pre><code>bash ./iscooked --no-color</code></pre>
+            <p><strong>For the downloaded script</strong></p>
+            <pre><code>bash ./iscooked.com --no-color</code></pre>
+            <p>Use the Bash 4 or later executable available on your machine. On macOS, the system Bash can be too old.</p>
+            <p>A completed check can produce a passed result, warning, or critical finding. Read the new message; a lower unknown count does not establish safety.</p>
+            <p><strong>Still unknown?</strong> Record the check name, exact message, operating system, and scanner version. Get the version without a scan:</p>
+            <pre><code>bash ./iscooked --version</code></pre>
+            <p>For a downloaded copy, replace <code>./iscooked</code> with <code>./iscooked.com</code>. Remove credentials, personal paths, and service details before you share a report.</p>
+            <a class="text-link" href="https://github.com/johnpippett/iscooked/issues">Report an unsupported check <span aria-hidden="true">↗</span></a>
+          </section>
+        </div>
+      </div>
+    </main>
+    <footer class="container site-footer">
+      <a class="brand footer-brand" href="./index.html">iscooked<span class="brand-dot">.</span></a>
+      <p>Evidence first. Examine what remains unknown.</p>
+      <div class="footer-links"><a href="./index.html#install">Run a scan</a><a href="./iscooked.com">Scanner source</a><a href="https://github.com/johnpippett/iscooked">GitHub</a></div>
+    </footer>
+  </body>
+</html>

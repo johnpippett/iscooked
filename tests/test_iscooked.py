@@ -82,6 +82,8 @@ def run_with_mocks(mocks=None, env_vars=None, extra_path="/usr/bin:/bin"):
         extra_path: additional PATH entries after mock dir
     """
     with tempfile.TemporaryDirectory() as tmpdir:
+        default_home = os.path.join(tmpdir, "home")
+        os.makedirs(default_home)
         if mocks:
             for name, content in mocks.items():
                 path = os.path.join(tmpdir, name)
@@ -106,6 +108,9 @@ main
 
         test_env = os.environ.copy()
         test_env["PATH"] = tmpdir + ":" + extra_path
+        # Keep full-scanner fixtures away from the caller's home and checkout.
+        # Tests that need a specific HOME can still provide it explicitly.
+        test_env["HOME"] = default_home
         if env_vars:
             test_env.update(env_vars)
 
@@ -114,6 +119,7 @@ main
             capture_output=True,
             text=True,
             env=test_env,
+            cwd=tmpdir,
         )
         result.stdout_plain = strip_ansi(result.stdout)
         result.stderr_plain = strip_ansi(result.stderr)
@@ -129,6 +135,8 @@ def source_and_run(
 ):
     """Source the scanner (without running main) and call a single function."""
     with tempfile.TemporaryDirectory() as tmpdir:
+        default_home = os.path.join(tmpdir, "home")
+        os.makedirs(default_home)
         if mocks:
             for name, content in mocks.items():
                 path = os.path.join(tmpdir, name)
@@ -163,6 +171,9 @@ OS_TYPE="${{ISCOOKED_TEST_OS_TYPE:-linux}}"
 
         test_env = os.environ.copy()
         test_env["PATH"] = tmpdir + ":" + extra_path
+        # Keep function fixtures away from the caller's home and checkout.
+        # Tests that need a specific HOME can still provide it explicitly.
+        test_env["HOME"] = default_home
         if env_vars:
             test_env.update(env_vars)
 
@@ -171,6 +182,7 @@ OS_TYPE="${{ISCOOKED_TEST_OS_TYPE:-linux}}"
             capture_output=True,
             text=True,
             env=test_env,
+            cwd=tmpdir,
         )
         result.stdout_plain = strip_ansi(result.stdout)
         result.stderr_plain = strip_ansi(result.stderr)
@@ -273,7 +285,7 @@ class TestTelemetry:
             mocks={"uname": 'echo Linux'},
             env_vars={"DO_NOT_TRACK": "1"},
         )
-        assert "DO_NOT_TRACK=1 is set (good!)" in result.stdout_plain
+        assert "DO_NOT_TRACK=1 is set in the scanner environment" in result.stdout_plain
 
     def test_ss_not_grepped_for_telemetry_domains(self):
         """The script must NOT call ss/netstat to grep for telemetry hostnames."""
@@ -494,7 +506,8 @@ class TestModelPermissions:
                 "check_model_permissions",
                 env_vars={"HOME": tmpdir},
             )
-            assert "world-readable" not in result.stdout_plain.lower()
+            assert "WARMING UP" not in result.stdout_plain
+            assert "No world-readable file modes found" in result.stdout_plain
 
     def test_nested_world_readable_model_file_is_flagged(self):
         """World-readable model files nested below a model dir must be detected."""

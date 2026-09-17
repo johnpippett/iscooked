@@ -6,30 +6,58 @@
 
 The canonical Bash source URL is https://iscooked.com/iscooked.com.
 
+The homepage shows a static example report. It does not start the scanner. Start
+the scanner in a terminal.
+
 ```bash
 curl -fsSL https://iscooked.com/iscooked.com | bash
 ```
 
-To download and inspect the source before running:
+To download and read the source before execution:
 
 ```bash
-curl -fsSL https://iscooked.com/iscooked.com -o iscooked.com
+curl -fsSL https://iscooked.com/iscooked.com -o iscooked.com &&
 less iscooked.com
+```
+
+After you read the source, start it with the Bash 4 or later executable you selected:
+
+```bash
 bash iscooked.com
 ```
 
-Requires Bash 4+ and standard Unix tools. Python 3 is optional for structured
-configuration, API, browser, and model-code checks; curl is needed for HTTP probes.
-Missing optional tools cause skipped checks. Elevated privileges can improve some
-firewall and port checks. The scanner runs locally and sends no telemetry;
-it probes local AI services on localhost or their local bind addresses.
+Requires Bash 4 or later and standard Unix tools. Some macOS installations use Bash 3.2. Use
+Bash 4 or later on macOS. Run `bash --version` to examine the version. Python 3 is optional for structured configuration,
+API, browser, and model-code checks; curl is needed for HTTP probes. Missing
+optional tools cause skipped checks. Elevated privileges can improve some
+firewall and port checks. The scan runs locally and does not send scan results
+to a remote service. AI service probes target localhost or their local bind
+addresses. The telemetry check reads opt-out variables and exact known
+`0.0.0.0` entries in `/etc/hosts`; it does not inspect all outbound connections.
 
 Older pages may advertise /i. That path is a compatibility redirect to the
 canonical script URL above; use the canonical URL in new instructions.
 
+## Reports
+
+After download, run `bash iscooked.com --help` for options without a scan.
+Use `--json` for a structured report (requires Python 3), or `--no-color` for text without terminal colors.
+Use `--fail-on critical`, `--fail-on warning`, or `--fail-on unknown` to select a failure exit policy.
+Without a policy, a completed scan returns 0 regardless of findings. Invalid options and unsupported requirements return 2.
+Skipped results do not trigger a failure exit. A successful exit does not prove that the system is secure.
+
+Reports count critical, warning, passed, unknown, and skipped results separately.
+The terminal summary shows a colored bar, a `% cooked` score, and a score label.
+The labels are LOOKING FRESH, SLIGHTLY WARM, MEDIUM RARE, and FULLY COOKED.
+Critical findings and warnings cannot receive LOOKING FRESH. Reports without passed, warning, or critical results use STILL DEFROSTING.
+Low scores with unknown or skipped results also use STILL DEFROSTING when no risk findings occur.
+Critical findings receive a separate instruction at every score. The score is a heuristic total, not a probability.
+Scanner environment values do not establish the settings of a running service.
+
 ## Links
 
-- [Homepage](https://iscooked.com/): Overview, checks, and example output.
+- [Homepage](https://iscooked.com/): Static overview, checks, and example output.
+- [Unknown results](https://iscooked.com/unknowns): Diagnostic steps and limits for incomplete checks.
 - [Bash source](https://iscooked.com/iscooked.com): The scanner, not an HTML page.
 - [Repository and README](https://github.com/johnpippett/iscooked): Requirements,
   usage, scoring, and source code.

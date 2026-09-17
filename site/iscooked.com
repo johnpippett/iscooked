@@ -2,15 +2,15 @@
 # iscooked.com — Am I Cooked? Local AI Security Scanner
 # https://iscooked.com | MIT License
 #
-# Scans your local AI setup for security and privacy risks.
-# Runs locally. Sends nothing anywhere. Ever.
+# Examines local AI settings for security and privacy risks.
+# Reports stay local. Selected probes read service metadata.
 
 set -euo pipefail
 
 PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 export PATH
 
-VERSION="1.1.0"
+VERSION="1.2.0"
 
 # ─── Colors & Formatting ───────────────────────────────────────────────────────
 
@@ -36,15 +36,37 @@ TOTAL_CHECKS=0
 COOKED_COUNT=0
 WARMING_COUNT=0
 SAFE_COUNT=0
+UNKNOWN_COUNT=0
+SKIPPED_COUNT=0
 SCORE=0
+OUTPUT_FORMAT=text
+FAIL_ON=none
+COLOR_MODE=auto
+CURRENT_CHECK_ID=""
+CURRENT_CHECK_TITLE=""
+CURRENT_AREA_INDEX=-1
+STARTED_AREA_COUNT=0
+STARTED_AREA_IDS=()
+STARTED_AREA_TITLES=()
+AREA_OBSERVATION_FLAGS=()
+AREA_UNKNOWN_FLAGS=()
+AREA_SKIP_FLAGS=()
+FINDING_CHECK_IDS=()
+FINDING_CHECK_TITLES=()
+FINDING_STATUSES=()
+FINDING_MESSAGES=()
+FINDING_POINTS=()
 
 # ─── OS Detection ──────────────────────────────────────────────────────────────
 
-OS_TYPE="linux"
+OS_TYPE="unsupported"
 case "$(uname -s)" in
     Darwin*) OS_TYPE="macos" ;;
     Linux*)  OS_TYPE="linux" ;;
 esac
+if [[ "$OS_TYPE" == macos ]]; then
+    PATH="/opt/homebrew/sbin:/opt/homebrew/bin:$PATH"
+fi
 
 # ─── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -79,43 +101,134 @@ draw_line() {
 }
 
 section() {
+    local same_area=false area_index
+    if [[ "$CURRENT_CHECK_ID" == "$1" && "$CURRENT_CHECK_TITLE" == "$2" && "$CURRENT_AREA_INDEX" -ge 0 ]]; then
+        same_area=true
+    fi
+    CURRENT_CHECK_ID="$1"
+    CURRENT_CHECK_TITLE="$2"
+    if [[ "$same_area" == false ]]; then
+        CURRENT_AREA_INDEX=-1
+        for area_index in "${!STARTED_AREA_IDS[@]}"; do
+            if [[ "${STARTED_AREA_IDS[area_index]}" == "$1" ]]; then
+                CURRENT_AREA_INDEX="$area_index"
+                break
+            fi
+        done
+        if [[ "$CURRENT_AREA_INDEX" -lt 0 ]]; then
+            CURRENT_AREA_INDEX="$STARTED_AREA_COUNT"
+            STARTED_AREA_IDS[CURRENT_AREA_INDEX]="$1"
+            STARTED_AREA_TITLES[CURRENT_AREA_INDEX]="$2"
+            AREA_OBSERVATION_FLAGS[CURRENT_AREA_INDEX]=0
+            AREA_UNKNOWN_FLAGS[CURRENT_AREA_INDEX]=0
+            AREA_SKIP_FLAGS[CURRENT_AREA_INDEX]=0
+            STARTED_AREA_COUNT=$((STARTED_AREA_COUNT + 1))
+        fi
+    fi
+    [[ "$same_area" == true ]] && return 0
+    [[ "$OUTPUT_FORMAT" == text ]] || return 0
     echo ""
     echo -e "  ${MAGENTA}${BOLD}[$1]${RESET} ${WHITE}${BOLD}$2${RESET}"
     echo -e "  ${DIM}$(draw_line)${RESET}"
 }
 
+check_area_metadata() {
+    case "$1" in
+        check_network_exposure) CHECK_METADATA_ID="01"; CHECK_METADATA_TITLE="Network Exposure" ;;
+        check_api_auth) CHECK_METADATA_ID="02"; CHECK_METADATA_TITLE="API Authentication" ;;
+        check_model_permissions) CHECK_METADATA_ID="03"; CHECK_METADATA_TITLE="Model File Permissions" ;;
+        check_docker_risks) CHECK_METADATA_ID="04"; CHECK_METADATA_TITLE="Docker / Container Risks" ;;
+        check_gpu_exposure) CHECK_METADATA_ID="05"; CHECK_METADATA_TITLE="GPU Driver Exposure" ;;
+        check_telemetry) CHECK_METADATA_ID="06"; CHECK_METADATA_TITLE="Telemetry / Phoning Home" ;;
+        check_firewall) CHECK_METADATA_ID="07"; CHECK_METADATA_TITLE="Firewall Status" ;;
+        check_ssl_tls) CHECK_METADATA_ID="08"; CHECK_METADATA_TITLE="SSL/TLS Configuration" ;;
+        check_processes) CHECK_METADATA_ID="09"; CHECK_METADATA_TITLE="AI Process Enumeration" ;;
+        check_sensitive_files) CHECK_METADATA_ID="10"; CHECK_METADATA_TITLE="Sensitive File Exposure" ;;
+        check_history_logs) CHECK_METADATA_ID="11"; CHECK_METADATA_TITLE="History & Logs Leakage" ;;
+        check_ollama_config) CHECK_METADATA_ID="12"; CHECK_METADATA_TITLE="Ollama-Specific Checks" ;;
+        check_browser_debugging) CHECK_METADATA_ID="13"; CHECK_METADATA_TITLE="Browser Remote Debugging" ;;
+        check_mcp_config) CHECK_METADATA_ID="14"; CHECK_METADATA_TITLE="MCP Configuration" ;;
+        check_agent_gateway) CHECK_METADATA_ID="15"; CHECK_METADATA_TITLE="Agent Gateway Configuration" ;;
+        check_model_code_execution) CHECK_METADATA_ID="16"; CHECK_METADATA_TITLE="Remote Model Code" ;;
+        *) return 2 ;;
+    esac
+}
+
+run_check() {
+    local check_name="$1" results_before
+    check_area_metadata "$check_name"
+    section "$CHECK_METADATA_ID" "$CHECK_METADATA_TITLE"
+    results_before=$TOTAL_CHECKS
+    "$check_name"
+    if [[ "$TOTAL_CHECKS" -eq "$results_before" ]]; then
+        result_skip "No result was reported by this check; inspection is incomplete"
+    fi
+}
+
 result_cooked() {
-    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
-    COOKED_COUNT=$((COOKED_COUNT + 1))
-    SCORE=$((SCORE + 10))
-    printf '%b  %s\n' "  ${COOKED}" "$(sanitize_result_message "$1")"
+    record_result critical "$1"
 }
 
 result_warming() {
-    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
-    WARMING_COUNT=$((WARMING_COUNT + 1))
-    SCORE=$((SCORE + 4))
-    printf '%b  %s\n' "  ${WARMING}" "$(sanitize_result_message "$1")"
+    record_result warning "$1"
 }
 
 result_safe() {
-    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
-    SAFE_COUNT=$((SAFE_COUNT + 1))
-    printf '%b  %s\n' "  ${SAFE}" "$(sanitize_result_message "$1")"
+    record_result passed "$1"
 }
 
 result_skip() {
-    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
-    printf '%b  %s\n' "  ${DIM}⏭  SKIP${RESET}" "$(sanitize_result_message "$1")"
+    record_result skipped "$1"
 }
 
 result_unknown() {
-    # Inspection could not be completed — explicitly report the gap instead of
-    # silently treating it as SAFE. Counted like a warning so the summary shows it.
+    record_result unknown "$1"
+}
+
+record_result() {
+    local status="$1" message points=0 label
+    message=$(sanitize_result_message "$2")
+    case "$status" in
+        critical) COOKED_COUNT=$((COOKED_COUNT + 1)); points=10; label="$COOKED" ;;
+        warning) WARMING_COUNT=$((WARMING_COUNT + 1)); points=4; label="$WARMING" ;;
+        passed) SAFE_COUNT=$((SAFE_COUNT + 1)); label="$SAFE" ;;
+        unknown) UNKNOWN_COUNT=$((UNKNOWN_COUNT + 1)); points=4; label="$UNKNOWN" ;;
+        skipped) SKIPPED_COUNT=$((SKIPPED_COUNT + 1)); label="${DIM}⏭  SKIP${RESET}" ;;
+        *) return 2 ;;
+    esac
+    FINDING_CHECK_IDS[TOTAL_CHECKS]="$CURRENT_CHECK_ID"
+    FINDING_CHECK_TITLES[TOTAL_CHECKS]="$CURRENT_CHECK_TITLE"
+    FINDING_STATUSES[TOTAL_CHECKS]="$status"
+    FINDING_MESSAGES[TOTAL_CHECKS]="$message"
+    FINDING_POINTS[TOTAL_CHECKS]="$points"
     TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
-    WARMING_COUNT=$((WARMING_COUNT + 1))
-    SCORE=$((SCORE + 4))
-    printf '%b  %s\n' "  ${UNKNOWN}" "$(sanitize_result_message "$1")"
+    SCORE=$((SCORE + points))
+    if [[ "$CURRENT_AREA_INDEX" -ge 0 ]]; then
+        case "$status" in
+            critical|warning|passed) AREA_OBSERVATION_FLAGS[CURRENT_AREA_INDEX]=1 ;;
+            unknown) AREA_UNKNOWN_FLAGS[CURRENT_AREA_INDEX]=1 ;;
+            skipped) AREA_SKIP_FLAGS[CURRENT_AREA_INDEX]=1 ;;
+        esac
+    fi
+    if [[ "$OUTPUT_FORMAT" == text ]]; then
+        printf '%b  %s\n' "  ${label}" "$message"
+    fi
+}
+
+coverage_count() {
+    local kind="$1" area_index flag count=0
+    for area_index in "${!STARTED_AREA_IDS[@]}"; do
+        case "$kind" in
+            observations) flag="${AREA_OBSERVATION_FLAGS[area_index]:-0}" ;;
+            unknown) flag="${AREA_UNKNOWN_FLAGS[area_index]:-0}" ;;
+            skips) flag="${AREA_SKIP_FLAGS[area_index]:-0}" ;;
+            *) return 2 ;;
+        esac
+        if [[ "$flag" == 1 ]]; then
+            count=$((count + 1))
+        fi
+    done
+    printf '%s' "$count"
 }
 
 command_exists() {
@@ -131,35 +244,54 @@ sanitize_result_message() {
 # Portable stat: returns octal permission string (e.g. "755")
 get_file_perms() {
     if [[ "$OS_TYPE" == "macos" ]]; then
-        stat -f '%Lp' "$1" 2>/dev/null || echo "000"
+        stat -f '%Lp' "$1" 2>/dev/null
     else
-        stat -c '%a' "$1" 2>/dev/null || echo "000"
+        stat -c '%a' "$1" 2>/dev/null
     fi
 }
 
 # Portable stat: returns owner username
 get_file_owner() {
     if [[ "$OS_TYPE" == "macos" ]]; then
-        stat -f '%Su' "$1" 2>/dev/null || echo "unknown"
+        stat -f '%Su' "$1" 2>/dev/null
     else
-        stat -c '%U' "$1" 2>/dev/null || echo "unknown"
+        stat -c '%U' "$1" 2>/dev/null
     fi
 }
 
 # Portable listening socket check: returns matching lines for a port
 get_listen_line() {
     local port="$1"
+    local socket_output=""
+    local attempted=false
+
     if command_exists ss; then
-        ss -tlnp 2>/dev/null | grep -E "[:\.]${port}([[:space:]]|$)" || true
-    elif command_exists netstat; then
-        if [[ "$OS_TYPE" == "macos" ]]; then
-            netstat -an -ptcp 2>/dev/null | grep LISTEN | grep -E "[:\.]${port}([[:space:]]|$)" || true
-        else
-            netstat -tlnp 2>/dev/null | grep -E "[:\.]${port}([[:space:]]|$)" || true
+        attempted=true
+        if socket_output=$(ss -tlnp 2>/dev/null); then
+            printf '%s\n' "$socket_output" | grep -E "[:\.]${port}([[:space:]]|$)" || true
+            return 0
         fi
-    else
-        echo ""
     fi
+
+    if command_exists netstat; then
+        attempted=true
+        if [[ "$OS_TYPE" == "macos" ]]; then
+            if socket_output=$(netstat -an -ptcp 2>/dev/null); then
+                printf '%s\n' "$socket_output" | grep LISTEN | grep -E "[:\.]${port}([[:space:]]|$)" || true
+                return 0
+            fi
+        else
+            if socket_output=$(netstat -tlnp 2>/dev/null); then
+                printf '%s\n' "$socket_output" | grep -E "[:\.]${port}([[:space:]]|$)" || true
+                return 0
+            fi
+        fi
+    fi
+
+    if [[ "$attempted" == "true" ]]; then
+        return 2
+    fi
+    return 1
 }
 
 # Extract the local bind host from ss/netstat output for this port.
@@ -245,6 +377,27 @@ format_http_host() {
     fi
 }
 
+is_numeric_ip_host() {
+    local host="$1"
+    if command_exists python3; then
+        python3 -I -B -c 'import ipaddress, sys; ipaddress.ip_address(sys.argv[1])' "$host" 2>/dev/null
+    else
+        if [[ "$host" == *:* ]]; then
+            [[ "$host" =~ ^[0-9A-Fa-f:.]+$ ]]
+            return
+        fi
+        [[ "$host" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+        local octet
+        local -a octets=()
+        IFS=. read -r -a octets <<< "$host"
+        for octet in "${octets[@]}"; do
+            [[ "$octet" == 0 || "$octet" != 0* ]] || return 1
+            [[ "$((10#$octet))" -le 255 ]] || return 1
+        done
+        return 0
+    fi
+}
+
 # ─── Checks ─────────────────────────────────────────────────────────────────────
 
 check_network_exposure() {
@@ -263,13 +416,26 @@ check_network_exposure() {
 9090:Prometheus (AI metrics)"
 
     local found_any=false
+    local listener_query_failed=false
+    local listener_query_unavailable=false
+    local listen_rc=0
 
     while IFS= read -r entry; do
         local port="${entry%%:*}"
         local name="${entry#*:}"
 
         local listen_line=""
-        listen_line=$(get_listen_line "$port")
+        if listen_line=$(get_listen_line "$port"); then
+            :
+        else
+            listen_rc=$?
+            if [[ "$listen_rc" -eq 2 ]]; then
+                listener_query_failed=true
+            else
+                listener_query_unavailable=true
+            fi
+            continue
+        fi
 
         if [[ -n "$listen_line" ]]; then
             found_any=true
@@ -285,14 +451,18 @@ check_network_exposure() {
         fi
     done <<< "$ai_ports"
 
-    if [[ "$found_any" == "false" ]]; then
+    if [[ "$listener_query_failed" == "true" ]]; then
+        result_unknown "Network listener inspection failed — exposure status UNKNOWN"
+    elif [[ "$listener_query_unavailable" == "true" ]]; then
+        result_skip "Network listener inspection requires ss or netstat"
+    elif [[ "$found_any" == "false" ]]; then
         result_safe "No common AI service ports detected as listening"
     fi
 }
 
 # Parse bounded model metadata without printing model names or other response data.
 api_model_metadata() {
-    python3 -c '
+    python3 -I -B -c '
 import json, sys
 kind = sys.argv[1]
 try:
@@ -323,13 +493,37 @@ check_api_auth() {
     # socket addresses and the three conventional localhost ports are probed.
     local port expected route lines line host target url response status body
     local identity metadata exposed seen count ordered loopbacks
+    local listener_inventory_reported=false
     for port in 11434 1234 8000; do
         case "$port" in
             11434) expected="Ollama"; route="/api/tags" ;;
             1234) expected="LM Studio"; route="/v1/models" ;;
             8000) expected="vLLM"; route="/v1/models" ;;
         esac
-        lines=$(get_listen_line "$port")
+        local listener_inventory_status="ok"
+        local listen_rc=0
+        if lines=$(get_listen_line "$port"); then
+            :
+        else
+            listen_rc=$?
+            if [[ "$listen_rc" -eq 2 ]]; then
+                listener_inventory_status="error"
+            else
+                listener_inventory_status="unavailable"
+            fi
+            if [[ "$listener_inventory_reported" == "false" ]]; then
+                if [[ "$listener_inventory_status" == "error" ]]; then
+                    result_unknown "API bind exposure inspection failed — bind status UNKNOWN"
+                else
+                    result_skip "API bind exposure inspection requires ss or netstat"
+                fi
+                listener_inventory_reported=true
+            fi
+            # API checks can still probe the documented localhost endpoint when
+            # listener inventory is unavailable. Curl status and metadata checks
+            # below determine whether that endpoint responds.
+            lines=""
+        fi
         # Prefer exposed binds when wildcard and loopback resolve to one target.
         ordered=""; loopbacks=""
         while IFS= read -r line; do
@@ -352,7 +546,7 @@ check_api_auth() {
             else
                 host=$(get_listen_host "$line" "$port")
                 # Refuse hostnames and malformed socket data before building URLs.
-                if [[ "$host" != "*" ]] && ! python3 -c 'import ipaddress,sys; ipaddress.ip_address(sys.argv[1])' "$host" 2>/dev/null; then
+                if [[ "$host" != "*" ]] && ! python3 -I -B -c 'import ipaddress,sys; ipaddress.ip_address(sys.argv[1])' "$host" 2>/dev/null; then
                     result_skip "API port ${port}: unsupported local bind address"
                     continue
                 fi
@@ -395,6 +589,8 @@ check_api_auth() {
                 200)
                     if [[ -z "$metadata" ]]; then
                         result_unknown "${identity} ${route} on port ${port}: authentication inconclusive (unexpected model-list response)"
+                    elif [[ "$listener_inventory_status" != "ok" ]]; then
+                        result_unknown "${identity} ${route} on port ${port} responds without authentication; bind exposure is UNKNOWN"
                     elif [[ "$exposed" == "true" ]]; then
                         result_cooked "${identity} ${route} on port ${port} accessible without authentication on a non-loopback interface; correlate with network exposure (same endpoint)"
                     else
@@ -453,16 +649,17 @@ ${brew_prefix}/var/ollama/models"
                 elif [[ ! -r "$dir" || ! -x "$dir" ]]; then
                     result_skip "Model directory ${dir} is not readable — inspection incomplete, permissions unknown"
                 else
-                    result_safe "Model directory ${dir} has restrictive permissions"
+                    result_safe "No world-readable file modes found in ${dir}; write access is assessed separately"
                 fi
             else
                 result_skip "Model directory ${dir} — inspection incomplete, permissions unknown"
             fi
 
             # Check if world-writable
-            local world_writable
-            world_writable=$(find "$dir" -maxdepth 2 -perm -o+w 2>/dev/null | head -5 || true)
-            if [[ -n "$world_writable" ]]; then
+            local world_writable_count
+            if ! world_writable_count=$(find "$dir" -maxdepth 2 -perm -o+w 2>/dev/null | wc -l); then
+                result_unknown "Model directory ${dir} world-write inspection incomplete"
+            elif [[ "$world_writable_count" -gt 0 ]]; then
                 result_cooked "Files in ${dir} are world-writable!"
             fi
         fi
@@ -480,7 +677,7 @@ docker_read_metadata() {
     elif command_exists gtimeout; then
         gtimeout 5 docker "$@"
     elif command_exists python3; then
-        python3 -c 'import subprocess, sys
+        python3 -I -B -c 'import subprocess, sys
 try:
     sys.exit(subprocess.run(["docker", *sys.argv[1:]], timeout=5).returncode)
 except (OSError, subprocess.TimeoutExpired):
@@ -513,7 +710,7 @@ check_docker_risks() {
     # Only a parsed array of strings can establish daemon security mode.
     # Without a JSON parser, retain unknown rather than infer rootful access.
     if command_exists python3; then
-        daemon_mode=$(printf '%s' "$security_options" | python3 -c 'import json, sys
+        daemon_mode=$(printf '%s' "$security_options" | python3 -I -B -c 'import json, sys
 try:
     options = json.load(sys.stdin)
     if not isinstance(options, list) or not all(isinstance(x, str) for x in options):
@@ -659,7 +856,7 @@ except (ValueError, TypeError):
 # Browser control inspection uses process evidence, never a guessed default port.
 # Only /json/version is read; response-supplied control URLs are never followed.
 browser_debugging_evidence() {
-    python3 - "$OS_TYPE" <<'PY'
+    python3 -I -B - "$OS_TYPE" <<'PY'
 import ipaddress
 import json
 import os
@@ -855,20 +1052,34 @@ check_gpu_exposure() {
     if command_exists nvidia-smi; then
         found_gpu=true
         # Check if nvidia management services have exposed ports
-        local nvidia_listen=""
-        nvidia_listen=$(get_listen_line "" 2>/dev/null || true)
+        local nvidia_listen="" nvidia_listener_state="unavailable" nvidia_socket_output=""
         # More targeted check: look for nvidia-related listeners
         if command_exists ss; then
-            nvidia_listen=$(ss -tlnp 2>/dev/null | grep -iE "nvidia|nv-host" | grep -vi "nvidia-settings" || true)
+            nvidia_listener_state="error"
+            if nvidia_socket_output=$(ss -tlnp 2>/dev/null); then
+                nvidia_listener_state="ok"
+                nvidia_listen=$(printf '%s\n' "$nvidia_socket_output" | grep -iE "nvidia|nv-host" | grep -vi "nvidia-settings" || true)
+            fi
         elif command_exists netstat; then
+            nvidia_listener_state="error"
             if [[ "$OS_TYPE" == "macos" ]]; then
-                nvidia_listen=$(netstat -an -ptcp 2>/dev/null | grep LISTEN | grep -iE "nvidia|nv-host" | grep -vi "nvidia-settings" || true)
+                if nvidia_socket_output=$(netstat -an -ptcp 2>/dev/null); then
+                    nvidia_listener_state="ok"
+                    nvidia_listen=$(printf '%s\n' "$nvidia_socket_output" | grep LISTEN | grep -iE "nvidia|nv-host" | grep -vi "nvidia-settings" || true)
+                fi
             else
-                nvidia_listen=$(netstat -tlnp 2>/dev/null | grep -iE "nvidia|nv-host" | grep -vi "nvidia-settings" || true)
+                if nvidia_socket_output=$(netstat -tlnp 2>/dev/null); then
+                    nvidia_listener_state="ok"
+                    nvidia_listen=$(printf '%s\n' "$nvidia_socket_output" | grep -iE "nvidia|nv-host" | grep -vi "nvidia-settings" || true)
+                fi
             fi
         fi
 
-        if [[ -n "$nvidia_listen" ]]; then
+        if [[ "$nvidia_listener_state" == "error" ]]; then
+            result_unknown "NVIDIA listener inspection failed — management port status UNKNOWN"
+        elif [[ "$nvidia_listener_state" == "unavailable" ]]; then
+            result_skip "NVIDIA listener inspection requires ss or netstat"
+        elif [[ -n "$nvidia_listen" ]]; then
             result_warming "NVIDIA management service has network-exposed ports"
         else
             result_safe "NVIDIA GPU detected, no management ports exposed"
@@ -877,8 +1088,11 @@ check_gpu_exposure() {
         # Check nvidia device permissions (Linux only)
         if [[ "$OS_TYPE" == "linux" && -e /dev/nvidia0 ]]; then
             local nv_perms
-            nv_perms=$(get_file_perms /dev/nvidia0)
-            if [[ "${nv_perms: -1}" -ge 6 ]]; then
+            if ! nv_perms=$(get_file_perms /dev/nvidia0); then
+                result_unknown "/dev/nvidia0 permission inspection failed"
+            elif [[ ! "$nv_perms" =~ ^[0-7]+$ ]]; then
+                result_unknown "/dev/nvidia0 returned an invalid permission value"
+            elif [[ "${nv_perms: -1}" -ge 6 ]]; then
                 result_warming "/dev/nvidia0 is accessible to all users (mode ${nv_perms})"
             else
                 result_safe "/dev/nvidia0 has restrictive permissions (mode ${nv_perms})"
@@ -891,8 +1105,11 @@ check_gpu_exposure() {
         found_gpu=true
         if [[ -e /dev/dri/renderD128 ]]; then
             local render_perms
-            render_perms=$(get_file_perms /dev/dri/renderD128)
-            if [[ "${render_perms: -1}" -ge 6 ]]; then
+            if ! render_perms=$(get_file_perms /dev/dri/renderD128); then
+                result_unknown "/dev/dri/renderD128 permission inspection failed"
+            elif [[ ! "$render_perms" =~ ^[0-7]+$ ]]; then
+                result_unknown "/dev/dri/renderD128 returned an invalid permission value"
+            elif [[ "${render_perms: -1}" -ge 6 ]]; then
                 result_warming "/dev/dri/renderD128 is world-accessible (mode ${render_perms})"
             fi
         fi
@@ -902,7 +1119,7 @@ check_gpu_exposure() {
     if [[ "$OS_TYPE" == "macos" ]]; then
         if system_profiler SPDisplaysDataType 2>/dev/null | grep -qi "Metal\|GPU"; then
             found_gpu=true
-            result_safe "macOS GPU uses Metal (sandboxed by default)"
+            result_skip "macOS GPU capability detected; runtime access policy was not inspected"
         fi
     fi
 
@@ -918,7 +1135,7 @@ check_mcp_config() {
         return
     fi
     local mcp_output mcp_severity mcp_message
-    if ! mcp_output=$(python3 - 2>/dev/null <<'MCP_PY'
+    if ! mcp_output=$(python3 -I -B - 2>/dev/null <<'MCP_PY'
 import json
 import os
 import re
@@ -1139,7 +1356,7 @@ check_agent_gateway() {
         return
     fi
     local gateway_output gateway_severity gateway_message
-    if ! gateway_output=$(python3 - 2>/dev/null <<'GATEWAY_PY'
+    if ! gateway_output=$(python3 -I -B - 2>/dev/null <<'GATEWAY_PY'
 import fnmatch
 import ipaddress
 import json
@@ -1313,37 +1530,43 @@ mixpanel.com
 analytics.google.com
 stats.lmstudio.ai"
 
-    # Check active connections
-    local active_conns=""
-    if command_exists ss; then
-        active_conns=$(ss -tnp 2>/dev/null || true)
-    elif command_exists netstat; then
-        active_conns=$(netstat -tn 2>/dev/null || true)
-    fi
-
-    # Check if OLLAMA_NO_CLOUD or telemetry opt-outs are set
-    if [[ -n "${OLLAMA_NO_CLOUD:-}" ]]; then
-        result_safe "OLLAMA_NO_CLOUD is set"
-    fi
+    local evidence=false
+    case "${OLLAMA_NO_CLOUD:-}" in
+        1|true|TRUE|True|t|T)
+            result_safe "OLLAMA_NO_CLOUD is enabled in the scanner environment; running service settings are not verified"
+            evidence=true ;;
+        ''|0|false|FALSE|False|f|F) ;;
+        *) result_unknown "OLLAMA_NO_CLOUD has an unrecognized value; review the running service settings"; evidence=true ;;
+    esac
 
     local do_not_track="${DO_NOT_TRACK:-}"
     if [[ "$do_not_track" == "1" ]]; then
-        result_safe "DO_NOT_TRACK=1 is set (good!)"
+        result_safe "DO_NOT_TRACK=1 is set in the scanner environment; application support and running service settings are not verified"
+        evidence=true
     fi
 
     # Check /etc/hosts for blocked telemetry
     if [[ -f /etc/hosts ]]; then
-        local blocked=0
-        while IFS= read -r domain; do
-            if grep -qE "^\\s*0\\.0\\.0\\.0\\s+${domain}$" /etc/hosts 2>/dev/null; then
-                blocked=$((blocked + 1))
-            fi
-        done <<< "$telemetry_domains_list"
+        local blocked=0 domain
+        # Compare complete host tokens, including aliases before a comment.
+        if ! blocked=$(awk -v domains="$telemetry_domains_list" '
+            BEGIN { n=split(domains, items, "\n"); for (i=1; i<=n; i++) wanted[items[i]]=1 }
+            { sub(/#.*/, "") }
+            $1 == "0.0.0.0" { for (i=2; i<=NF; i++) if ($i in wanted) seen[$i]=1 }
+            END { for (name in seen) count++; print count+0 }
+        ' /etc/hosts 2>/dev/null); then
+            result_unknown "Telemetry hosts-file evidence is unavailable"
+            evidence=true
+            blocked=0
+        fi
         if [[ $blocked -gt 0 ]]; then
-            result_safe "${blocked} telemetry domains blocked in /etc/hosts"
+            result_safe "${blocked} telemetry domains mapped to 0.0.0.0 in /etc/hosts; application DNS behavior is not verified"
+            evidence=true
         fi
     fi
-
+    if [[ "$evidence" == false ]]; then
+        result_skip "No supported opt-out evidence found; outbound traffic and running service settings are not assessed"
+    fi
 }
 
 check_firewall() {
@@ -1351,6 +1574,16 @@ check_firewall() {
 
     local has_firewall=false
     local inspection_incomplete=false
+
+    if [[ "$OS_TYPE" == macos ]]; then
+        if ! command_exists /usr/libexec/ApplicationFirewall/socketfilterfw && ! command_exists pfctl; then
+            result_unknown "No supported firewall inspection tool is available; firewall state is unknown"
+            return
+        fi
+    elif ! command_exists ufw && ! command_exists firewall-cmd && ! command_exists iptables && ! command_exists nft; then
+        result_unknown "No supported firewall inspection tool is available; firewall state is unknown"
+        return
+    fi
 
     if [[ "$OS_TYPE" == "macos" ]]; then
         # macOS Application Firewall (socketfilterfw)
@@ -1474,10 +1707,24 @@ check_ssl_tls() {
 1234
 8000"
     local found_http=false
+    local listener_query_failed=false
+    local listener_query_unavailable=false
+    local probe_incomplete=false
+    local listen_rc=0
 
     while IFS= read -r port; do
         local listen_line=""
-        listen_line=$(get_listen_line "$port")
+        if listen_line=$(get_listen_line "$port"); then
+            :
+        else
+            listen_rc=$?
+            if [[ "$listen_rc" -eq 2 ]]; then
+                listener_query_failed=true
+            else
+                listener_query_unavailable=true
+            fi
+            continue
+        fi
 
         if [[ -n "$listen_line" ]]; then
             local probe_host=""
@@ -1491,14 +1738,22 @@ check_ssl_tls() {
             fi
 
             if [[ -n "$probe_host" ]]; then
+                if ! is_numeric_ip_host "$probe_host"; then
+                    result_unknown "Port ${port} has an unsupported listener address; plain HTTP probe skipped"
+                    probe_incomplete=true
+                    continue
+                fi
                 if command_exists curl; then
                     local http_code
                     local probe_url_host
                     probe_url_host=$(format_http_host "$probe_host")
-                    http_code=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 --noproxy '*' "http://${probe_url_host}:${port}/" 2>/dev/null) || http_code="000"
-                    if [[ "$http_code" != "000" && -n "$http_code" ]]; then
+                    http_code=$(curl -q -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 --noproxy '*' "http://${probe_url_host}:${port}/" 2>/dev/null) || http_code="000"
+                    if [[ "$http_code" =~ ^[0-9]{3}$ && "$http_code" != "000" ]]; then
                         result_cooked "Port ${port} is exposed on ${exposure_desc} over plain HTTP"
                         found_http=true
+                    else
+                        result_unknown "Port ${port} plain HTTP probe was inconclusive (curl status ${http_code:-unknown})"
+                        probe_incomplete=true
                     fi
                 else
                     result_warming "Port ${port} is exposed on ${exposure_desc} (cannot verify TLS without curl)"
@@ -1508,7 +1763,11 @@ check_ssl_tls() {
         fi
     done <<< "$ports_list"
 
-    if [[ "$found_http" == "false" ]]; then
+    if [[ "$listener_query_failed" == "true" ]]; then
+        result_unknown "Network listener inspection failed — plain HTTP exposure status UNKNOWN"
+    elif [[ "$listener_query_unavailable" == "true" ]]; then
+        result_skip "Plain HTTP inspection requires ss or netstat"
+    elif [[ "$found_http" == "false" && "$probe_incomplete" == "false" ]]; then
         result_safe "No AI services exposed over plain HTTP on non-localhost"
     fi
 }
@@ -1516,11 +1775,26 @@ check_ssl_tls() {
 check_processes() {
     section "09" "AI Process Enumeration"
 
-    local ai_process_patterns="ollama|llama\.cpp|llama-server|text-generation|vllm|lmstudio|comfyui|stable-diffusion|koboldcpp|localai|whisper|faster-whisper|tabbyAPI"
+    local ai_process_patterns="ollama|llama[.]cpp|llama-server|text-generation|vllm|lmstudio|comfyui|stable-diffusion|koboldcpp|localai|whisper|faster-whisper|tabbyapi"
+
+    if ! command_exists ps; then
+        result_skip "Process inspection requires ps"
+        return
+    fi
+
+    local ps_snapshot
+    if ! ps_snapshot=$(ps aux 2>/dev/null); then
+        result_unknown "AI process inspection failed — process state UNKNOWN"
+        return
+    fi
 
     local ai_procs
     local my_pid=$$
-    ai_procs=$(ps aux 2>/dev/null | grep -iE "$ai_process_patterns" | awk -v pid="$my_pid" '$2 != pid {print}' || true)
+    if ! ai_procs=$(printf '%s\n' "$ps_snapshot" | awk -v pid="$my_pid" -v re="$ai_process_patterns" \
+        '$2 != pid && $0 !~ /^[[:space:]]*USER[[:space:]]/ && tolower($0) ~ re {print}'); then
+        result_unknown "AI process filtering failed — process state UNKNOWN"
+        return
+    fi
 
     if [[ -z "$ai_procs" ]]; then
         result_skip "No AI-related processes running"
@@ -1528,14 +1802,17 @@ check_processes() {
     fi
 
     while IFS= read -r proc_line; do
-        local proc_user proc_cmd
-        proc_user=$(echo "$proc_line" | awk '{print $1}')
-        proc_cmd=$(echo "$proc_line" | awk '{for(i=11;i<=NF;i++) printf "%s ", $i; print ""}' | head -c 60)
+        local proc_user proc_pid proc_cmd
+        proc_user=$(awk '{print $1}' <<< "$proc_line")
+        proc_pid=$(awk '{print $2}' <<< "$proc_line")
+        proc_cmd=$(awk '{print $11}' <<< "$proc_line")
+        proc_cmd="${proc_cmd##*/}"
+        proc_cmd="${proc_cmd:-unknown executable}"
 
         if [[ "$proc_user" == "root" ]]; then
-            result_cooked "AI process running as root: ${proc_cmd}"
+            result_cooked "Candidate AI process '${proc_cmd}' (pid ${proc_pid}) running as root"
         else
-            result_safe "AI process running as '${proc_user}': ${proc_cmd}"
+            result_safe "Candidate AI process '${proc_cmd}' (pid ${proc_pid}) running as '${proc_user}'"
         fi
     done <<< "$ai_procs"
 }
@@ -1553,33 +1830,76 @@ $HOME/dev
 /srv"
 
     local found_exposed_env=false
+    local env_inspection_incomplete=false
+    local -a seen_env_files=()
     while IFS= read -r dir; do
         if [[ -d "$dir" ]]; then
+            local env_files="" env_file_count=0
+            if ! env_files=$(find "$dir" -maxdepth 3 -type f \( -name ".env" -o -name ".env.local" -o -name "*.env" \) -print 2>/dev/null | awk 'NR <= 21 { print }'); then
+                result_unknown "Sensitive file search incomplete in ${dir}"
+                env_inspection_incomplete=true
+                continue
+            fi
             while IFS= read -r env_file; do
                 [[ -z "$env_file" ]] && continue
+                env_file_count=$((env_file_count + 1))
+                if [[ "$env_file_count" -gt 20 ]]; then
+                    result_skip "Sensitive file search reached the 20-file limit in ${dir}; additional files were not examined"
+                    env_inspection_incomplete=true
+                    break
+                fi
+                local already_seen=false seen_env_file
+                for seen_env_file in "${seen_env_files[@]}"; do
+                    if [[ "$seen_env_file" == "$env_file" ]]; then
+                        already_seen=true
+                        break
+                    fi
+                done
+                if [[ "$already_seen" == "true" ]]; then
+                    continue
+                fi
+                seen_env_files+=("$env_file")
                 if [[ -f "$env_file" ]]; then
                     local perms
-                    perms=$(get_file_perms "$env_file")
+                    if ! perms=$(get_file_perms "$env_file"); then
+                        result_unknown "Permission inspection failed for ${env_file}"
+                        env_inspection_incomplete=true
+                        continue
+                    fi
+                    if [[ ! "$perms" =~ ^[0-7]+$ ]]; then
+                        result_unknown "Permission inspection returned an invalid value for ${env_file}"
+                        env_inspection_incomplete=true
+                        continue
+                    fi
                     if [[ "${perms: -1}" -ge 4 ]]; then
                         if grep -qiE '(api_key|api_secret|token|password|secret)=' "$env_file" 2>/dev/null; then
                             result_cooked ".env file with API keys is world-readable: ${env_file} (mode ${perms})"
                             found_exposed_env=true
+                        else
+                            local env_grep_rc=$?
+                            if [[ "$env_grep_rc" -gt 1 ]]; then
+                                result_unknown "Secret scan failed for ${env_file}"
+                                env_inspection_incomplete=true
+                            fi
                         fi
                     fi
                 fi
-            done < <(find "$dir" -maxdepth 3 -name ".env" -o -name ".env.local" -o -name "*.env" 2>/dev/null | head -20 || true)
+            done <<< "$env_files"
         fi
     done <<< "$search_dirs_list"
 
-    if [[ "$found_exposed_env" == "false" ]]; then
+    if [[ "$found_exposed_env" == "false" && "$env_inspection_incomplete" == "false" ]]; then
         result_safe "No world-readable .env files with API keys found"
     fi
 
     # Check if models directory is owned properly
     if [[ -d "$HOME/.ollama" ]]; then
         local ollama_owner
-        ollama_owner=$(get_file_owner "$HOME/.ollama")
-        if [[ "$ollama_owner" != "$(whoami)" && "$ollama_owner" != "ollama" ]]; then
+        if ! ollama_owner=$(get_file_owner "$HOME/.ollama"); then
+            result_unknown "~/.ollama owner inspection failed"
+        elif [[ -z "$ollama_owner" || "$ollama_owner" == "unknown" ]]; then
+            result_unknown "~/.ollama owner is UNKNOWN"
+        elif [[ "$ollama_owner" != "$(whoami)" && "$ollama_owner" != "ollama" ]]; then
             result_warming "~/.ollama is owned by '${ollama_owner}' instead of you"
         fi
     fi
@@ -1595,19 +1915,36 @@ $HOME/.local/share/fish/fish_history"
 
     while IFS= read -r hist_file; do
         if [[ -f "$hist_file" ]]; then
-            local key_leaks
-            key_leaks=$(grep -ciE '(sk-[a-zA-Z0-9]{20,}|api_key=|OPENAI_API_KEY|ANTHROPIC_API_KEY|HF_TOKEN)' "$hist_file" 2>/dev/null || true)
-            key_leaks="${key_leaks:-0}"
-            if [[ "$key_leaks" -gt 0 ]]; then
-                result_cooked "Shell history contains ~${key_leaks} potential API key(s): $(basename "$hist_file")"
+            local key_leaks=""
+            local history_grep_failed=false
+            if key_leaks=$(grep -ciE '(sk-[a-zA-Z0-9]{20,}|api_key=|OPENAI_API_KEY|ANTHROPIC_API_KEY|HF_TOKEN)' "$hist_file" 2>/dev/null); then
+                :
             else
+                local history_grep_rc=$?
+                if [[ "$history_grep_rc" -eq 1 ]]; then
+                    key_leaks=0
+                else
+                    result_unknown "Shell history inspection failed for $(basename "$hist_file")"
+                    history_grep_failed=true
+                fi
+            fi
+            if [[ "$history_grep_failed" == "false" && ! "$key_leaks" =~ ^[0-9]+$ ]]; then
+                result_unknown "Shell history inspection returned an invalid count for $(basename "$hist_file")"
+                history_grep_failed=true
+            fi
+            if [[ "$history_grep_failed" == "false" && "$key_leaks" -gt 0 ]]; then
+                result_cooked "Shell history contains ~${key_leaks} potential API key(s): $(basename "$hist_file")"
+            elif [[ "$history_grep_failed" == "false" ]]; then
                 result_safe "No API keys found in $(basename "$hist_file")"
             fi
 
             # Check permissions on history file
             local hist_perms
-            hist_perms=$(get_file_perms "$hist_file")
-            if [[ "${hist_perms: -1}" -ge 4 ]]; then
+            if ! hist_perms=$(get_file_perms "$hist_file"); then
+                result_unknown "Permission inspection failed for $(basename "$hist_file")"
+            elif [[ ! "$hist_perms" =~ ^[0-7]+$ ]]; then
+                result_unknown "Permission inspection returned an invalid value for $(basename "$hist_file")"
+            elif [[ "${hist_perms: -1}" -ge 4 ]]; then
                 result_warming "$(basename "$hist_file") is world-readable (mode ${hist_perms})"
             fi
         fi
@@ -1627,8 +1964,11 @@ $HOME/Library/Logs/LM Studio"
     while IFS= read -r log_dir; do
         if [[ -d "$log_dir" ]]; then
             local log_perms
-            log_perms=$(get_file_perms "$log_dir")
-            if [[ "${log_perms: -1}" -ge 4 ]]; then
+            if ! log_perms=$(get_file_perms "$log_dir"); then
+                result_unknown "Permission inspection failed for ${log_dir}"
+            elif [[ ! "$log_perms" =~ ^[0-7]+$ ]]; then
+                result_unknown "Permission inspection returned an invalid value for ${log_dir}"
+            elif [[ "${log_perms: -1}" -ge 4 ]]; then
                 result_warming "AI log directory is world-readable: ${log_dir}"
             else
                 result_safe "AI log directory has restrictive permissions: ${log_dir}"
@@ -1643,7 +1983,7 @@ _model_code_snapshot() {
     # Only stdlib process inspection: never import model packages or read configs.
     # ps cannot preserve argv boundaries perfectly; malformed/indirect launches
     # are not treated as proof of a disabled setting. Cap bytes, rows, and time.
-    python3 - <<'PY'
+    python3 -I -B - <<'PY'
 import os
 import re
 import select
@@ -1809,36 +2149,49 @@ check_ollama_config() {
         return
     fi
 
-    # Check OLLAMA_HOST
-    local ollama_host="${OLLAMA_HOST:-}"
+    # These values belong to this scanner, not necessarily the running service.
+    local ollama_host="${OLLAMA_HOST:-}" bind_host
     if [[ -n "$ollama_host" ]]; then
-        if echo "$ollama_host" | grep -qE '^0\.0\.0\.0|^::'; then
-            result_cooked "OLLAMA_HOST is set to ${ollama_host} — exposed to network!"
-        elif echo "$ollama_host" | grep -qE '^127\.|^localhost'; then
-            result_safe "OLLAMA_HOST is bound to localhost (${ollama_host})"
+        bind_host="${ollama_host#*://}"
+        bind_host="${bind_host%%/*}"
+        if [[ "$ollama_host" == *'@'* || "$ollama_host" == *'?'* || "$ollama_host" == *'#'* ]]; then
+            result_unknown "OLLAMA_HOST has an unsupported URL form in the scanner environment; verify running service settings"
         else
-            result_warming "OLLAMA_HOST is set to ${ollama_host} — verify this is intentional"
+            case "$bind_host" in
+                '['*']'*) bind_host="${bind_host%%]*}"; bind_host="${bind_host#[}" ;;
+                ::|::1) ;;
+                *) bind_host="${bind_host%%:*}" ;;
+            esac
+            case "$bind_host" in
+                0.0.0.0|::)
+                    result_cooked "OLLAMA_HOST selects all interfaces in the scanner environment; verify running service settings" ;;
+                127.0.0.1|localhost|::1)
+                    result_safe "OLLAMA_HOST selects loopback in the scanner environment; running service settings are not verified" ;;
+                *)
+                    result_unknown "OLLAMA_HOST requires address resolution in the scanner environment; verify the intended bind and running service settings" ;;
+            esac
         fi
     else
-        result_safe "OLLAMA_HOST not set (defaults to localhost)"
+        result_skip "OLLAMA_HOST is absent from the scanner environment; running service settings are not verified"
     fi
 
     # Check OLLAMA_ORIGINS
     local ollama_origins="${OLLAMA_ORIGINS:-}"
     if [[ "$ollama_origins" == "*" ]]; then
-        result_cooked "OLLAMA_ORIGINS=* — any website can access your Ollama!"
+        result_cooked "OLLAMA_ORIGINS=* in the scanner environment permits any origin; verify running service settings"
     elif [[ -n "$ollama_origins" ]]; then
-        result_warming "OLLAMA_ORIGINS is set to: ${ollama_origins}"
+        result_warming "OLLAMA_ORIGINS is set in the scanner environment; review permitted origins and running service settings"
     fi
 
     # Check systemd service file (Linux only)
     if [[ "$OS_TYPE" == "linux" && -f /etc/systemd/system/ollama.service ]]; then
         local svc_user
-        svc_user=$(grep -oP 'User=\K.*' /etc/systemd/system/ollama.service 2>/dev/null || echo "")
-        if [[ "$svc_user" == "root" || -z "$svc_user" ]]; then
-            result_warming "Ollama systemd service runs as root (or no User= set)"
+        if ! svc_user=$(awk -F= '/^[[:space:]]*User[[:space:]]*=/ { value=$2; gsub(/^[[:space:]]+|[[:space:]]+$/, "", value) } END { print value }' /etc/systemd/system/ollama.service 2>/dev/null); then
+            result_unknown "Ollama systemd service file is unreadable; effective service user is unknown"
+        elif [[ "$svc_user" == "root" || -z "$svc_user" ]]; then
+            result_warming "Ollama systemd service file selects root or omits User=; overrides and the active user are not verified"
         else
-            result_safe "Ollama systemd service runs as '${svc_user}'"
+            result_safe "Ollama systemd service file selects a non-root user; overrides and the active user are not verified"
         fi
     fi
 
@@ -1860,27 +2213,32 @@ check_ollama_config() {
 
 # ─── Score & Summary ────────────────────────────────────────────────────────────
 
-print_summary() {
-    echo ""
-    echo -e "${DIM}──────────────────────────────────────────────────────────────${RESET}"
-    echo ""
-
-    # Cap score at 100
-    if [[ $SCORE -gt 100 ]]; then
-        SCORE=100
+summary_status() {
+    if [[ "$COOKED_COUNT" -gt 0 ]]; then
+        printf critical
+    elif [[ "$WARMING_COUNT" -gt 0 ]]; then
+        printf warning
+    elif [[ "$UNKNOWN_COUNT" -gt 0 || "$SKIPPED_COUNT" -gt 0 || "$TOTAL_CHECKS" -eq 0 ]]; then
+        printf inconclusive
+    else
+        printf no_findings
     fi
+}
 
-    # Determine cooked level
+print_summary() {
+    local displayed_score=$SCORE
+    [[ "$displayed_score" -le 100 ]] || displayed_score=100
+
     local level_text level_color bar_char
-    if [[ $SCORE -ge 70 ]]; then
+    if [[ "$displayed_score" -ge 70 ]]; then
         level_text="FULLY COOKED"
         level_color="$RED"
         bar_char="█"
-    elif [[ $SCORE -ge 40 ]]; then
+    elif [[ "$displayed_score" -ge 40 ]]; then
         level_text="MEDIUM RARE"
         level_color="$YELLOW"
         bar_char="▓"
-    elif [[ $SCORE -ge 15 ]]; then
+    elif [[ "$displayed_score" -ge 15 ]]; then
         level_text="SLIGHTLY WARM"
         level_color="$CYAN"
         bar_char="▒"
@@ -1890,62 +2248,217 @@ print_summary() {
         bar_char="░"
     fi
 
-    # Score bar
-    local bar_width=40
-    local filled=$((SCORE * bar_width / 100))
-    local empty=$((bar_width - filled))
-    local bar=""
-    for ((i=0; i<filled; i++)); do bar+="$bar_char"; done
-    for ((i=0; i<empty; i++)); do bar+=" "; done
+    if [[ $((COOKED_COUNT + WARMING_COUNT + SAFE_COUNT)) -eq 0 ]]; then
+        level_text="STILL DEFROSTING"
+        level_color="$CYAN"
+        bar_char="░"
+    elif [[ "$displayed_score" -lt 15 ]]; then
+        if [[ $((COOKED_COUNT + WARMING_COUNT)) -gt 0 ]]; then
+            level_text="SLIGHTLY WARM"
+            level_color="$CYAN"
+            bar_char="▒"
+        elif [[ $((UNKNOWN_COUNT + SKIPPED_COUNT)) -gt 0 ]]; then
+            level_text="STILL DEFROSTING"
+            level_color="$CYAN"
+            bar_char="░"
+        fi
+    fi
+    [[ "$COOKED_COUNT" -eq 0 ]] || level_color="$RED"
 
+    local bar_width=40
+    local filled=$((displayed_score * bar_width / 100))
+    local bar="" i
+    for ((i=0; i<bar_width; i++)); do
+        if [[ "$i" -lt "$filled" ]]; then bar+="$bar_char"; else bar+=" "; fi
+    done
+
+    echo ""
+    echo -e "${DIM}──────────────────────────────────────────────────────────────${RESET}"
     echo -e "  ${WHITE}${BOLD}YOUR COOKED SCORE${RESET}"
     echo ""
-    echo -e "  ${level_color}${BOLD}${SCORE}%${RESET} ${DIM}cooked${RESET}  [${level_color}${bar}${RESET}]"
+    echo -e "  ${level_color}${BOLD}${displayed_score}%${RESET} ${DIM}cooked${RESET}  [${level_color}${bar}${RESET}]"
     echo ""
     echo -e "  ${level_color}${BOLD}${level_text}${RESET}"
     echo ""
-    echo -e "  ${RED}${BOLD}${COOKED_COUNT}${RESET} critical  ${YELLOW}${BOLD}${WARMING_COUNT}${RESET} warnings  ${GREEN}${BOLD}${SAFE_COUNT}${RESET} passed  ${DIM}(${TOTAL_CHECKS} total checks)${RESET}"
+    echo -e "  ${RED}${BOLD}${COOKED_COUNT}${RESET} critical  ${YELLOW}${BOLD}${WARMING_COUNT}${RESET} warnings  ${GREEN}${BOLD}${SAFE_COUNT}${RESET} passed"
+    echo -e "  ${CYAN}${UNKNOWN_COUNT}${RESET} unknown  ${DIM}${SKIPPED_COUNT} skipped  (${TOTAL_CHECKS} results)${RESET}"
     echo ""
+    case "$(summary_status)" in
+        critical) echo -e "  ${RED}Fix critical findings first.${RESET}" ;;
+        warning) echo -e "  ${YELLOW}Turn down the heat. Check the warnings above.${RESET}" ;;
+        inconclusive) echo -e "  ${CYAN}Some checks are still on ice. Check unknowns and skips.${RESET}" ;;
+        no_findings) echo -e "  ${GREEN}No heat from the checks that ran.${RESET}" ;;
+    esac
+    echo ""
+}
 
-    if [[ $SCORE -ge 70 ]]; then
-        echo -e "  ${RED}You are absolutely cooked. Fix the critical issues above ASAP.${RESET}"
-    elif [[ $SCORE -ge 40 ]]; then
-        echo -e "  ${YELLOW}You're getting warm. Address the warnings to tighten things up.${RESET}"
-    elif [[ $SCORE -ge 15 ]]; then
-        echo -e "  ${CYAN}Not bad! A few things to clean up but you're mostly good.${RESET}"
-    else
-        echo -e "  ${GREEN}Looking fresh! Your local AI setup is pretty well locked down.${RESET}"
+print_json_report() {
+    # NUL separates fields. The serializer handles quotes and invalid UTF-8.
+    local index areas_with_observations areas_with_unknown areas_with_skips
+    areas_with_observations=$(coverage_count observations)
+    areas_with_unknown=$(coverage_count unknown)
+    areas_with_skips=$(coverage_count skips)
+    {
+        for ((index=0; index<TOTAL_CHECKS; index++)); do
+            printf '%s\0' "${FINDING_CHECK_IDS[index]}" "${FINDING_CHECK_TITLES[index]}" \
+                "${FINDING_STATUSES[index]}" "${FINDING_MESSAGES[index]}" "${FINDING_POINTS[index]}"
+        done
+    } | python3 -I -B -c '
+import json
+import sys
+
+version, platform, status = sys.argv[1:4]
+(total, critical, warning, passed, unknown, skipped, score,
+ areas_started, areas_observations, areas_unknown, areas_skips) = map(int, sys.argv[4:])
+fields = sys.stdin.buffer.read().decode("utf-8", errors="replace").split("\0")
+fields.pop()
+if len(fields) != total * 5:
+    raise SystemExit("Incomplete report records")
+findings = []
+for start in range(0, len(fields), 5):
+    check_id, title, state, message, points = fields[start:start + 5]
+    findings.append({"check": {"id": check_id, "title": title},
+                     "status": state, "message": message, "points": int(points)})
+json.dump({"schema_version": 1, "scanner": {"name": "iscooked", "version": version},
+           "platform": platform, "completed": True,
+           "summary": {"status": status,
+                       "counts": {"total": total, "critical": critical, "warning": warning,
+                                  "passed": passed, "unknown": unknown, "skipped": skipped},
+                       "score": {"value": min(score, 100), "raw_value": score, "maximum": 100,
+                                 "kind": "heuristic", "includes_unknown": True}},
+           "coverage": {"areas_started": areas_started,
+                        "areas_with_observations": areas_observations,
+                        "areas_with_unknown": areas_unknown,
+                        "areas_with_skips": areas_skips},
+           "findings": findings}, sys.stdout, ensure_ascii=True, indent=2)
+print()
+' "$VERSION" "$OS_TYPE" "$(summary_status)" "$TOTAL_CHECKS" "$COOKED_COUNT" \
+        "$WARMING_COUNT" "$SAFE_COUNT" "$UNKNOWN_COUNT" "$SKIPPED_COUNT" "$SCORE" \
+        "$STARTED_AREA_COUNT" "$areas_with_observations" "$areas_with_unknown" "$areas_with_skips"
+}
+
+usage() {
+    cat <<'USAGE'
+Usage: bash iscooked.com [options]
+
+Examine the local AI setup. The scanner does not change its configuration.
+
+  -h, --help          Show this help without a scan.
+  --version           Show the scanner version without a scan.
+  --json              Write one JSON report (requires Python 3).
+  --no-color          Disable terminal colors.
+  --fail-on LEVEL     Return 1 for the selected findings:
+                      critical: critical findings
+                      warning:  critical findings or warnings
+                      unknown:  critical findings, warnings, or unknown results
+
+Without --fail-on, a completed scan returns 0 regardless of its findings.
+Invalid options or unsupported requirements return 2 before the scan.
+Skipped results do not trigger --fail-on. A successful exit does not prove safety.
+Elevated privileges can improve some firewall and port checks.
+USAGE
+}
+
+configure_output() {
+    local color
+    if [[ "$COLOR_MODE" == never || ! -t 1 || -n "${NO_COLOR:-}" || "${TERM:-}" == dumb ]]; then
+        for color in RED GREEN YELLOW BLUE MAGENTA CYAN WHITE DIM BOLD RESET; do
+            printf -v "$color" '%s' ''
+        done
+        COOKED="🔥 COOKED"
+        WARMING="⚠  WARMING UP"
+        SAFE="✅ SAFE"
+        UNKNOWN="❓ UNKNOWN"
     fi
+}
 
-    echo ""
-    echo -e "  ${DIM}Elevated privileges can improve some firewall and port checks.${RESET}"
-    echo -e "  ${DIM}Report issues: https://github.com/johnpippett/iscooked${RESET}"
-    echo ""
+exit_for_findings() {
+    case "$FAIL_ON" in
+        critical) [[ "$COOKED_COUNT" -eq 0 ]] ;;
+        warning) [[ $((COOKED_COUNT + WARMING_COUNT)) -eq 0 ]] ;;
+        unknown) [[ $((COOKED_COUNT + WARMING_COUNT + UNKNOWN_COUNT)) -eq 0 ]] ;;
+        none) return 0 ;;
+    esac
 }
 
 # ─── Main ───────────────────────────────────────────────────────────────────────
 
 main() {
-    banner
+    local information="" required_tool
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help) information=help ;;
+            --version) information=version ;;
+            --json) OUTPUT_FORMAT=json ;;
+            --no-color) COLOR_MODE=never ;;
+            --fail-on)
+                if [[ $# -lt 2 ]]; then
+                    printf '%s\n' 'Missing --fail-on level. Use --help.' >&2
+                    return 2
+                fi
+                shift
+                case "$1" in
+                    critical|warning|unknown) FAIL_ON="$1" ;;
+                    *) printf '%s\n' 'Invalid --fail-on level. Use --help.' >&2; return 2 ;;
+                esac ;;
+            *) printf '%s\n' 'Unknown argument. Use --help.' >&2; return 2 ;;
+        esac
+        shift
+    done
+    case "$information" in
+        help) usage; return 0 ;;
+        version) printf 'iscooked %s\n' "$VERSION"; return 0 ;;
+    esac
+    if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+        printf '%s\n' 'Bash 4 or later is required. Select that Bash executable to run this file.' >&2
+        return 2
+    fi
+    if [[ "$OS_TYPE" != linux && "$OS_TYPE" != macos ]]; then
+        printf '%s\n' 'This scanner supports Linux and macOS only.' >&2
+        return 2
+    fi
+    if [[ "${HOME:-}" != /* || ! -d "${HOME:-}" ]]; then
+        printf '%s\n' 'HOME must identify an existing absolute directory for local file checks.' >&2
+        return 2
+    fi
+    for required_tool in awk basename cat find grep ps stat tr uname wc whoami; do
+        if ! command_exists "$required_tool"; then
+            printf 'Required system tool is unavailable: %s\n' "$required_tool" >&2
+            return 2
+        fi
+    done
+    if [[ "$OUTPUT_FORMAT" == json ]] && ! command_exists python3; then
+        printf '%s\n' 'JSON output requires python3. Use text output or install Python 3.' >&2
+        return 2
+    fi
+    configure_output
+    if [[ "$OUTPUT_FORMAT" == text ]]; then
+        banner
+    fi
 
-    check_network_exposure
-    check_api_auth
-    check_model_permissions
-    check_docker_risks
-    check_gpu_exposure
-    check_telemetry
-    check_firewall
-    check_ssl_tls
-    check_processes
-    check_sensitive_files
-    check_history_logs
-    check_ollama_config
-    check_browser_debugging
-    check_mcp_config
-    check_agent_gateway
-    check_model_code_execution
+    run_check check_network_exposure
+    run_check check_api_auth
+    run_check check_model_permissions
+    run_check check_docker_risks
+    run_check check_gpu_exposure
+    run_check check_telemetry
+    run_check check_firewall
+    run_check check_ssl_tls
+    run_check check_processes
+    run_check check_sensitive_files
+    run_check check_history_logs
+    run_check check_ollama_config
+    run_check check_browser_debugging
+    run_check check_mcp_config
+    run_check check_agent_gateway
+    run_check check_model_code_execution
 
-    print_summary
+    if [[ "$OUTPUT_FORMAT" == json ]]; then
+        print_json_report
+    else
+        print_summary
+    fi
+    exit_for_findings
 }
 
 main "$@"
