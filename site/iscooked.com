@@ -10,7 +10,7 @@ set -euo pipefail
 PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 export PATH
 
-VERSION="1.2.0"
+VERSION="1.2.1"
 
 # ─── Colors & Formatting ───────────────────────────────────────────────────────
 
@@ -1361,12 +1361,21 @@ import fnmatch
 import ipaddress
 import json
 import os
+import re
+import select
+import shutil
+import signal
 import stat
+import subprocess
 import sys
+import time
 
 # Intentionally strict JSON: JSON5, includes, environment interpolation and
 # runtime/CLI overrides require OpenClaw's own policy resolver and are not run.
 LIMIT = 1048576
+SUPPORTED_OPENCLAW_VERSIONS = frozenset({
+    '2026.9.3', '2026.9.4', '2026.9.5', '2026.9.6',
+})
 
 def emit(level, message):
     print(level + '\tOpenClaw: ' + message)
@@ -1406,6 +1415,57 @@ def unresolved(value):
         return any(unresolved(v) for v in value)
     return isinstance(value, str) and '${' in value
 
+def supported_cli_version():
+    executable = shutil.which('openclaw')
+    if not executable:
+        return False
+    try:
+        process = subprocess.Popen(
+            [executable, '--version'], stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError:
+        return False
+    deadline = time.monotonic() + 1.5
+    output = bytearray()
+    complete = False
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            ready, _, _ = select.select([process.stdout], [], [], remaining)
+            if not ready:
+                return False
+            chunk = os.read(process.stdout.fileno(), 257 - len(output))
+            if not chunk:
+                break
+            output.extend(chunk)
+            if len(output) > 256:
+                return False
+        if process.wait(timeout=max(0, deadline - time.monotonic())) != 0:
+            return False
+        complete = True
+        match = re.fullmatch(
+            r'OpenClaw ([0-9]{4}\.[0-9]{1,2}\.[0-9]{1,2})(?: \([0-9a-fA-F]{6,40}\))?',
+            output.decode('ascii').strip(),
+        )
+        return bool(match and match.group(1) in SUPPORTED_OPENCLAW_VERSIONS)
+    except (OSError, UnicodeError, subprocess.TimeoutExpired):
+        return False
+    finally:
+        if not complete:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        process.stdout.close()
+        try:
+            process.wait(timeout=0.1)
+        except subprocess.TimeoutExpired:
+            pass
+
 path = os.environ.get('OPENCLAW_CONFIG_PATH') or os.path.join(os.path.expanduser('~'), '.openclaw', 'openclaw.json')
 try:
     before = os.lstat(path)
@@ -1429,6 +1489,9 @@ try:
     config = json.loads(raw, object_pairs_hook=unique, parse_constant=reject_constant)
     if not isinstance(config, dict) or unresolved(config):
         raise ValueError()
+    if not supported_cli_version():
+        emit('unknown', 'OpenClaw CLI version unavailable or outside reviewed versions (2026.9.3–2026.9.6); policy inspection incomplete')
+        sys.exit(0)
     gateway = object_at(config, 'gateway')
     auth = object_at(gateway, 'auth')
     bind = enum(gateway, 'bind', ('auto', 'loopback', 'lan', 'tailnet', 'custom'))

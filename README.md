@@ -2,7 +2,7 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/johnpippett/iscooked?style=social)](https://github.com/johnpippett/iscooked)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-1.2.0-blue)](https://github.com/johnpippett/iscooked/releases)
+[![Version](https://img.shields.io/badge/version-1.2.1-blue)](https://github.com/johnpippett/iscooked/releases)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos-lightgrey)](https://github.com/johnpippett/iscooked)
 
 `iscooked` is a local security scanner for AI services, containers, and agent settings.
@@ -99,7 +99,7 @@ The scanner has 16 check areas:
 | 12 | Ollama-Specific Checks | `OLLAMA_HOST`, `OLLAMA_ORIGINS`, and selected service settings. |
 | 13 | Browser Remote Debugging | Chromium-family debugging flags, listeners, and `/json/version` metadata. |
 | 14 | MCP Configuration | Selected Model Context Protocol client files, filesystem grants, and permissions. |
-| 15 | Agent Gateway Configuration | Supported OpenClaw gateway, tool, sandbox, and direct-message settings. |
+| 15 | Agent Gateway Configuration | Selected OpenClaw settings when the installed CLI has a reviewed version. |
 | 16 | Remote Model Code | Remote-code flags in recognized vLLM and Text Generation Inference launches. |
 
 ## Unknown and skipped results
@@ -178,7 +178,9 @@ Most file checks use Unix mode bits. They do not establish access through every 
 
 The telemetry check reads values in the scanner environment and known host mappings. It does not establish the environment of a running service or analyze outbound traffic. `OLLAMA_NO_CLOUD` false values do not establish an opt-out. The Ollama check separates scanner variables from active service settings.
 
-MCP and OpenClaw checks cover selected files and supported JSON settings. Other clients, JSON5, includes, interpolation, unsupported overrides, and policy enforcement remain incomplete. Remote model-code checks cover recognized vLLM and Text Generation Inference command lines. They do not inspect configuration files, environment variables, or other runtimes. A model weights revision does not prove an executable code pin.
+MCP and OpenClaw checks cover selected files and supported JSON settings. For OpenClaw, the scanner runs `openclaw --version` with a 1.5-second limit. It accepts at most 256 output bytes. Versions `2026.9.3` through `2026.9.6` can use the selected config checks. A command outside the scanner's fixed search path, a failed command, or another version gives `UNKNOWN`. The CLI version does not prove the version of a running gateway. JSON5, includes, interpolation, overrides, and policy enforcement remain incomplete.
+
+Remote model-code checks cover recognized vLLM and Text Generation Inference command lines. They do not inspect configuration files, environment variables, or other runtimes. A model weights revision does not prove an executable code pin.
 
 Docker checks inspect known socket paths, the active Unix daemon endpoint, and host-root mounts. A read-only Docker socket mount can still permit daemon API calls. Rootless, proxy, and uncertain access can remain warning or unknown results.
 

@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 
 import pytest
@@ -9,7 +10,8 @@ import pytest
 SCRIPT = Path(__file__).resolve().parents[1] / 'site' / 'iscooked.com'
 
 
-def run_check(tmp_path, config=None, *, explicit=False, kind=None, mode=0o600, no_python=False):
+def run_check(tmp_path, config=None, *, explicit=False, kind=None, mode=0o600,
+              no_python=False, version_script="printf 'OpenClaw 2026.9.6\\n'"):
     home = tmp_path / 'home'
     home.mkdir(exist_ok=True)
     path = home / '.openclaw' / 'openclaw.json'
@@ -30,6 +32,13 @@ def run_check(tmp_path, config=None, *, explicit=False, kind=None, mode=0o600, n
     if explicit:
         env['OPENCLAW_CONFIG_PATH'] = str(path)
     source = SCRIPT.read_text().replace('main "$@"', '')
+    if version_script is not None:
+        binary_dir = tmp_path / 'bin'
+        binary_dir.mkdir(exist_ok=True)
+        binary = binary_dir / 'openclaw'
+        binary.write_text('#!/bin/sh\n' + version_script + '\n')
+        binary.chmod(0o700)
+        source += '\nPATH=' + shlex.quote(str(binary_dir)) + ':$PATH\n'
     if no_python:
         source += '\ncommand() { return 1; }\n'
     proc = subprocess.run(['/bin/bash', '-c', source + '\ncheck_agent_gateway\nprintf "SCORE=%s\\n" "$SCORE"'],
@@ -177,3 +186,36 @@ def test_allow_does_not_expand_restricted_base_profile(tmp_path):
     config['tools'].update(profile='messaging', allow=['exec'])
     out = run_check(tmp_path, config)
     assert 'COOKED' not in out and 'SCORE=4' in out
+
+
+@pytest.mark.parametrize('script', [
+    None,
+    "printf 'OpenClaw 2026.9.2\\n'",
+    "printf 'OpenClaw 2026.9.7\\n'",
+    "printf 'OpenClaw 2026.9.6-beta.1\\n'",
+    "printf 'other output\\n'",
+    'exit 2',
+    "head -c 1024 /dev/zero | tr '\\000' x",
+])
+def test_unrecognized_openclaw_version_does_not_claim_config_risk(tmp_path, script):
+    out = run_check(tmp_path, powerful(), version_script=script)
+    assert 'UNKNOWN' in out and 'SCORE=4' in out
+    assert 'COOKED' not in out and 'WARMING' not in out
+
+
+def test_openclaw_version_command_has_a_time_limit(tmp_path):
+    out = run_check(tmp_path, powerful(), version_script='sleep 3')
+    assert 'UNKNOWN' in out and 'SCORE=4' in out
+    assert 'COOKED' not in out
+
+
+def test_known_openclaw_version_with_build_suffix_retains_findings(tmp_path):
+    out = run_check(tmp_path, powerful(), version_script="printf 'OpenClaw 2026.9.6 (abc123)\\n'")
+    assert 'COOKED' in out and 'SCORE=10' in out
+
+
+def test_config_last_touched_version_is_not_installed_version(tmp_path):
+    config = powerful()
+    config['meta'] = {'lastTouchedVersion': '2026.9.6'}
+    out = run_check(tmp_path, config, version_script=None)
+    assert 'UNKNOWN' in out and 'COOKED' not in out
