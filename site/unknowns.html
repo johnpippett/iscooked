@@ -201,6 +201,8 @@ docker ps --format '{{.Names}} {{.Image}}'</code></pre>
               <summary>OpenClaw: strict JSON and runtime policy</summary>
               <div>
                 <p>The check reads <code>~/.openclaw/openclaw.json</code>, or the literal path in <code>OPENCLAW_CONFIG_PATH</code>.</p>
+                <p>The scanner calls <code>openclaw --version</code> before it examines policy settings. It supports CLI versions <code>2026.9.3</code> through <code>2026.9.6</code>. A missing or other version gives <code>UNKNOWN</code>.</p>
+                <p>Run <code>openclaw --version</code> to check the installed CLI version. The scanner uses a fixed command search path. The CLI version does not prove the running gateway version.</p>
                 <p>It supports strict JSON and selected policy fields. JSON5, includes, variables, and unsupported agent, provider, sender, or channel policies remain incomplete.</p>
                 <p>Verify that the path identifies the active configuration. Manually examine the documented runtime settings and policy. Do not start an agent to complete this check.</p>
                 <p>Automatic or Tailscale-based binding can require runtime evidence. The scanner does not resolve every bind mode or verify token enforcement.</p>
@@ -208,7 +210,7 @@ docker ps --format '{{.Names}} {{.Image}}'</code></pre>
               </div>
             </details>
             <p>Both parsers limit configuration files to 1 MiB. Some valid configurations exceed the scanner's coverage.</p>
-            <p class="guide-outcome"><strong>What resolves it:</strong> readable, supported configuration. Unsupported syntax, unresolved settings, or parser limits require manual review or a scanner improvement.</p>
+            <p class="guide-outcome"><strong>What resolves it:</strong> readable, supported configuration and a supported OpenClaw CLI version. Unsupported syntax, versions, unresolved settings, or parser limits require manual review or a scanner improvement.</p>
           </section>
 
           <section id="runtime" class="guide-section" aria-labelledby="runtime-heading">
