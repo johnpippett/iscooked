@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>iscooked report viewer</title>
+    <meta name="theme-color" content="#f4f2ec" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#141512" media="(prefers-color-scheme: dark)" />
+    <meta
+      name="description"
+      content="Open an iscooked JSON report in your browser. Findings are grouped by check, unknown results link to next steps, and nothing is uploaded."
+    />
+    <link rel="canonical" href="https://iscooked.com/report" />
+    <link rel="icon" type="image/webp" href="./assets/iscooked-logo-256-v1.webp" />
+    <link rel="stylesheet" href="./assets/theme.css?v=4" />
+    <link rel="stylesheet" href="./assets/report.css?v=1" />
+    <script src="./assets/score.js?v=1" defer></script>
+    <script src="./assets/report.js?v=1" defer></script>
+  </head>
+  <body class="report-page">
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <nav class="container nav" aria-label="Main navigation">
+        <a class="brand" href="./" aria-label="iscooked home"
+          ><img src="./assets/iscooked-logo-256-v1.webp" alt="" width="48" height="48" /><span
+            >iscooked<span class="brand-dot">.</span></span
+          ></a
+        >
+        <div class="nav-links">
+          <a class="nav-hide" href="./unknowns.html">Unknown results</a>
+          <a class="nav-hide" href="https://github.com/johnpippett/iscooked">GitHub <span aria-hidden="true">↗</span></a>
+          <a class="button button-small button-outline" href="./#install">Run a scan</a>
+        </div>
+      </nav>
+    </header>
+
+    <main id="main" tabindex="-1">
+      <section class="container viewer-intro" aria-labelledby="viewer-heading">
+        <div>
+          <span class="eyebrow">Report viewer</span>
+          <h1 id="viewer-heading">Plate your <span>report.</span></h1>
+        </div>
+        <div class="loader" id="loader">
+          <label class="dropzone" for="report-file" id="dropzone">
+            <input type="file" id="report-file" accept=".json,application/json" />
+            <span class="dropzone-title">Drop <code>cooked.json</code> here</span>
+            <span class="dropzone-sub">or choose a file · or paste JSON anywhere on this page</span>
+          </label>
+          <div class="loader-actions">
+            <button class="button button-ghost button-small" type="button" id="toggle-paste">Paste JSON</button>
+            <button class="button button-ghost button-small" type="button" id="load-example">Load the example</button>
+          </div>
+          <div class="paste-box" id="paste-box" hidden>
+            <label for="paste-input">Report JSON</label>
+            <textarea id="paste-input" rows="7" spellcheck="false" placeholder='{"schema_version": 1, "scanner": {"name": "iscooked", ...}'></textarea>
+            <button class="button button-primary button-small" type="button" id="paste-submit">Open report</button>
+          </div>
+          <p class="loader-error" id="loader-error" role="alert" hidden></p>
+          <p class="privacy">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="1.5" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
+            <span>Your browser reads the file. This page is served with <code>connect-src 'none'</code>, so it cannot send your report anywhere.</span>
+          </p>
+          <p class="hint">No report yet? Run <code>bash iscooked.com --json &gt; cooked.json</code></p>
+        </div>
+      </section>
+
+      <noscript>
+        <p class="container noscript">The report viewer needs JavaScript to read your file. Nothing is uploaded.</p>
+      </noscript>
+
+      <section class="container report-view" id="report-view" aria-labelledby="summary-heading" hidden>
+        <p class="example-banner" id="example-banner" hidden>
+          <strong>Example report.</strong> This is synthetic data. Load your own <code>cooked.json</code> above.
+        </p>
+
+        <div class="summary">
+          <div class="summary-score">
+            <h2 id="summary-heading" class="visually-hidden">Report summary</h2>
+            <p class="summary-label">Cooked score</p>
+            <p class="summary-value"><b id="r-score">0</b><small>%</small></p>
+            <p class="summary-verdict" id="r-verdict"></p>
+            <div class="heat-scale" aria-hidden="true">
+              <div class="heat-bar"></div>
+              <span class="heat-marker" id="r-marker"></span>
+            </div>
+            <p class="summary-message" id="r-message"></p>
+          </div>
+          <dl class="summary-meta" id="r-meta"></dl>
+        </div>
+
+        <div class="toolbar">
+          <div class="filters" role="group" aria-label="Filter findings" id="r-filters"></div>
+          <div class="toolbar-actions">
+            <button class="button button-ghost button-small" type="button" id="r-sort" aria-pressed="true">Worst first</button>
+            <button class="button button-primary button-small" type="button" id="r-copy">Copy as Markdown</button>
+          </div>
+        </div>
+        <p class="copy-status" id="r-copy-status" role="status" aria-live="polite"></p>
+
+        <div class="checks" id="r-checks"></div>
+
+        <p class="coverage-note">
+          The score is a capped heuristic, not a probability of compromise. Skipped
+          checks do not establish safety. Remove paths, hostnames, and container names
+          before you share a report.
+        </p>
+      </section>
+    </main>
+
+    <footer class="container site-footer">
+      <a class="brand footer-brand" href="./">iscooked<span class="brand-dot">.</span></a>
+      <p>Reports stay in your browser.</p>
+      <div class="footer-links">
+        <a href="./#install">Run a scan</a><a href="./unknowns.html">Unknown results</a><a href="./iscooked.com">Scanner source</a><a href="https://github.com/johnpippett/iscooked">GitHub</a>
+      </div>
+    </footer>
+  </body>
+</html>

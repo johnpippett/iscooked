@@ -2,9 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f5f4ef" />
-    <title>iscooked — Local AI security, made clear</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>iscooked — Is your local AI cooked?</title>
+    <meta name="theme-color" content="#f4f2ec" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#141512" media="(prefers-color-scheme: dark)" />
     <meta
       name="description"
       content="A local security scanner for AI services, containers, and agents. Examine 16 check areas with one Bash script. No account. No telemetry."
@@ -12,326 +13,132 @@
     <link rel="canonical" href="https://iscooked.com/" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://iscooked.com/" />
-    <meta property="og:title" content="iscooked — Is your local AI safe?" />
+    <meta property="og:title" content="iscooked — Is your local AI cooked?" />
     <meta
       property="og:description"
       content="Examine your AI services, containers, and agent settings. One local scanner. No account. No telemetry."
     />
-    <meta
-      property="og:image"
-      content="https://iscooked.com/assets/og-image.png"
-    />
+    <meta property="og:image" content="https://iscooked.com/assets/og-image.png" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="iscooked — Is your local AI safe?" />
+    <meta name="twitter:title" content="iscooked — Is your local AI cooked?" />
     <meta
       name="twitter:description"
       content="One local security scanner for AI services, containers, and agents."
     />
-    <meta
-      name="twitter:image"
-      content="https://iscooked.com/assets/og-image.png"
-    />
-    <link
-      rel="icon"
-      type="image/webp"
-      href="./assets/iscooked-logo-256-v1.webp"
-    />
-    <link rel="stylesheet" href="./assets/theme.css?v=3" />
-    <script src="./assets/app.js?v=2" defer></script>
+    <meta name="twitter:image" content="https://iscooked.com/assets/og-image.png" />
+    <link rel="icon" type="image/webp" href="./assets/iscooked-logo-256-v1.webp" />
+    <link rel="preload" href="./assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="./assets/fonts/martian-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="./assets/theme.css?v=4" />
+    <script src="./assets/score.js?v=1" defer></script>
+    <script src="./assets/app.js?v=3" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
     <header class="site-header">
       <nav class="container nav" aria-label="Main navigation">
         <a class="brand" href="./" aria-label="iscooked home"
-          ><img
-            src="./assets/iscooked-logo-256-v1.webp"
-            alt=""
-            width="48"
-            height="48"
-          /><span>iscooked<span class="brand-dot">.</span></span></a
+          ><img src="./assets/iscooked-logo-256-v1.webp" alt="" width="48" height="48" /><span
+            >iscooked<span class="brand-dot">.</span></span
+          ></a
         >
         <div class="nav-links">
-          <a class="github-link" href="https://github.com/johnpippett/iscooked"
-            >GitHub <span aria-hidden="true">↗</span></a
-          ><a class="button button-small button-outline" href="#install"
-            >Run a scan <span aria-hidden="true">↗</span></a
-          >
+          <a class="nav-hide" href="#checks">Checks</a>
+          <a class="nav-hide" href="#doneness">Score</a>
+          <a href="./report.html">Report viewer</a>
+          <a class="nav-hide" href="https://github.com/johnpippett/iscooked">GitHub <span aria-hidden="true">↗</span></a>
+          <a class="button button-small button-outline" href="#install">Run a scan</a>
         </div>
       </nav>
     </header>
+
     <main id="main" tabindex="-1">
       <section class="hero container" aria-labelledby="hero-heading">
         <div class="hero-copy">
-          <h1 id="hero-heading">
-            Your AI is local.<br />
-            <span>Is it safe?</span>
-          </h1>
-          <p class="hero-description">
-            Examine your AI services, containers, and agent settings. Find risks
-            before they become problems.
+          <span class="eyebrow">Local AI security scanner</span>
+          <h1 id="hero-heading">Your AI is local.<br /><span>Is it cooked?</span></h1>
+          <p class="lead">
+            One Bash script checks your model servers, containers, agent configs,
+            and MCP grants for the mistakes that get local AI owned. It reads.
+            It never fixes, phones home, or starts anything.
           </p>
-          <div class="hero-actions">
-            <a class="button button-primary" href="#install"
-              >Get the scanner
-              <svg aria-hidden="true" viewBox="0 0 24 24">
-                <path d="M4 12h15m-6-6 6 6-6 6" /></svg></a
-            ><a class="text-link" href="#demo"
-              >Explore an example
-              <svg aria-hidden="true" viewBox="0 0 24 24">
-                <path d="M4 12h15m-6-6 6 6-6 6" /></svg
-            ></a>
-          </div>
-          <p class="hero-note">
-            Runs on your machine. No account. No telemetry.
-          </p>
-        </div>
-        <article class="report" id="demo" aria-labelledby="report-heading">
-          <div class="report-top">
-            <h2 id="report-heading">Example report</h2>
-            <!-- prettier-ignore -->
-            <span class="report-version">Local AI Security Scanner v1.2.1</span>
-          </div>
-          <div class="score-overview">
-            <div>
-              <p class="mono report-label">Cooked score</p>
-              <div class="score">28<span>%</span></div>
-              <p class="score-caption">Slightly warm</p>
-            </div>
-            <div class="score-visual">
-              <div
-                class="score-track"
-                role="meter"
-                aria-label="Example cooked score"
-                aria-valuemin="0"
-                aria-valuemax="100"
-                aria-valuenow="28"
-                aria-valuetext="28 percent cooked. Slightly warm. 2 critical findings."
-              >
-                <span></span>
-              </div>
-              <div class="score-scale" aria-hidden="true">
-                <span>0</span><span>25</span><span>50</span><span>75</span
-                ><span>100</span>
-              </div>
-              <a href="#score-guide"
-                >How the score works <span aria-hidden="true">↗</span></a
-              >
-            </div>
-          </div>
-          <div class="report-totals" aria-label="Example totals">
-            <span><b class="critical-text">2</b> critical</span
-            ><span><b class="warning-text">2</b> warnings</span
-            ><span><b class="passed-text">3</b> passed</span>
-          </div>
-          <div
-            class="report-filter enhancement"
-            role="group"
-            aria-label="Filter example findings"
-            hidden
-          >
-            <button type="button" data-filter="all" aria-pressed="true">
-              All</button
-            ><button type="button" data-filter="critical" aria-pressed="false">
-              Critical</button
-            ><button type="button" data-filter="warning" aria-pressed="false">
-              Warnings</button
-            ><button type="button" data-filter="passed" aria-pressed="false">
-              Passed
-            </button>
-          </div>
-          <div class="findings" id="findings">
-            <details class="finding" data-severity="critical">
-              <summary>
-                <span class="status-symbol critical-text" aria-hidden="true"
-                  >!</span
-                ><span>Port 8000 listens on all interfaces</span
-                ><span class="finding-status critical-text">Critical</span>
-              </summary>
-              <div class="finding-detail">
-                A service listens on <code>0.0.0.0:8000</code> in this example.
-                The port alone does not identify the service. Restrict access to
-                the intended clients. This result does not prove internet
-                access.
-              </div>
-            </details>
-            <details class="finding" data-severity="critical">
-              <summary>
-                <span class="status-symbol critical-text" aria-hidden="true"
-                  >!</span
-                ><span>Model paths are writable by all users</span
-                ><span class="finding-status critical-text">Critical</span>
-              </summary>
-              <div class="finding-detail">
-                The scanner found world-writable paths in a model directory.
-                Examine each path's owner and permissions before you restrict
-                write access.
-              </div>
-            </details>
-            <details class="finding" data-severity="warning">
-              <summary>
-                <span class="status-symbol warning-text" aria-hidden="true"
-                  >!</span
-                ><span>Ollama model list needs no authentication</span
-                ><span class="finding-status warning-text">Warning</span>
-              </summary>
-              <div class="finding-detail">
-                The Ollama model-list route at
-                <code>127.0.0.1:11434/api/tags</code>
-                responds without authentication. This example uses localhost
-                only. This check does not examine every API route.
-              </div>
-            </details>
-            <details class="finding" data-severity="passed">
-              <summary>
-                <span class="status-symbol passed-text" aria-hidden="true"
-                  >✓</span
-                ><span>Port 1234 listens on localhost</span
-                ><span class="finding-status passed-text">Passed</span>
-              </summary>
-              <div class="finding-detail">
-                This listener uses <code>127.0.0.1:1234</code>. The port alone
-                does not identify the service. The result applies only to its
-                network binding.
-              </div>
-            </details>
-            <details class="finding" data-severity="warning">
-              <summary>
-                <span class="status-symbol warning-text" aria-hidden="true"
-                  >!</span
-                ><span>AI container uses host networking</span
-                ><span class="finding-status warning-text">Warning</span>
-              </summary>
-              <div class="finding-detail">
-                This container shares the host network. Examine whether the
-                application needs that access.
-              </div>
-            </details>
-            <details class="finding" data-severity="passed">
-              <summary>
-                <span class="status-symbol passed-text" aria-hidden="true"
-                  >✓</span
-                ><span>UFW firewall is active</span
-                ><span class="finding-status passed-text">Passed</span>
-              </summary>
-              <div class="finding-detail">
-                The firewall reports an active state. This check does not
-                establish that every firewall rule is correct.
-              </div>
-            </details>
-            <details class="finding" data-severity="passed">
-              <summary>
-                <span class="status-symbol passed-text" aria-hidden="true"
-                  >✓</span
-                ><span>AI container uses a non-root user</span
-                ><span class="finding-status passed-text">Passed</span>
-              </summary>
-              <div class="finding-detail">
-                The configured container user is not root. Other container
-                settings can still introduce risk.
-              </div>
-            </details>
-          </div>
-          <div class="report-expand enhancement" hidden>
-            <span id="finding-count" aria-live="polite"
-              >4 of 7 example findings</span
-            ><button
+          <div class="oneliner">
+            <pre><code id="hero-command">curl -fsSL https://iscooked.com/iscooked.com | bash</code></pre>
+            <button
+              class="copy-button enhancement"
               type="button"
-              id="show-findings"
-              aria-controls="findings"
-              aria-expanded="false"
-            >
-              <span id="show-findings-label">Show all 7</span>
-              <span id="show-findings-icon" aria-hidden="true">↗</span>
-            </button>
+              data-copy="hero-command"
+              data-status="hero-copy-status"
+              aria-label="Copy quick run command"
+              hidden
+            >Copy</button>
           </div>
-          <p class="report-footnote">
-            Example data. This page does not scan your device.
-          </p>
-        </article>
+          <p class="copy-status" id="hero-copy-status" role="status" aria-live="polite"></p>
+          <div class="hero-actions">
+            <a class="text-link" href="#install"
+              >Prefer to read it first?
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 12h15m-6-6 6 6-6 6" /></svg
+            ></a>
+            <p class="hero-note"><b>Linux · macOS</b> · Bash 4+ · No account · No telemetry</p>
+          </div>
+        </div>
+
+        <figure class="terminal" id="demo" aria-labelledby="demo-caption">
+          <div class="terminal-bar">
+            <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="terminal-title" id="demo-caption">Example scan · synthetic output</span>
+            <button class="terminal-replay enhancement" type="button" hidden>Replay</button>
+          </div>
+          <pre class="terminal-body" tabindex="0" aria-label="Example scanner output"><span class="ln"><span class="t-prompt">~</span> $ <span class="t-cmd">bash iscooked.com</span></span><span class="ln"></span><span class="ln t-banner">                    __            __       __</span><span class="ln t-banner">  _________  ____  / /_____  ____/ /  ____/ /_</span><span class="ln t-banner"> / ___/ __ \/ __ \/ //_/ _ \/ __  /  / ___/ __ \</span><span class="ln t-banner">/ /__/ /_/ / /_/ / ,&lt; /  __/ /_/ /_ (__  ) / / /</span><span class="ln t-banner">\___/\____/\____/_/|_|\___/\__,_/(_)____/_/ /_/</span><span class="ln"></span><span class="ln t-dim">  Am I Cooked? — Local AI Security Scanner v1.2.1</span><span class="ln t-dim">  https://iscooked.com</span><span class="ln"></span><span class="ln t-cyan t-bold">  Scanning your setup...</span><span class="ln"></span><span class="ln t-dim">──────────────────────────────────────────────────────────────</span><span class="ln"></span><span class="ln t-bold">  [01] Network Exposure</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-red">🔥 COOKED</span>  Unidentified service on port 8000 (commonly vLLM) is listening on ALL interfaces</span><span class="ln">  <span class="t-green">✅ SAFE</span>  Unidentified service on port 1234 (commonly LM Studio) is bound to localhost only</span><span class="ln"></span><span class="ln t-bold">  [02] API Authentication</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-yellow">⚠  WARMING UP</span>  Ollama /api/tags on port 11434 accessible without authentication on localhost; other routes were not tested</span><span class="ln"></span><span class="ln t-bold">  [03] Model File Permissions</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-red">🔥 COOKED</span>  Files in /srv/models are world-writable!</span><span class="ln"></span><span class="ln t-bold">  [04] Docker / Container Risks</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-green">✅ SAFE</span>  Container 'open-webui' is running as user 'app'</span><span class="ln">  <span class="t-yellow">⚠  WARMING UP</span>  Container 'open-webui' is using host networking</span><span class="ln"></span><span class="ln t-bold">  [05] GPU Driver Exposure</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-dim">⏭  SKIP</span>  No GPU devices detected</span><span class="ln"></span><span class="ln t-bold">  [06] Telemetry / Phoning Home</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-dim">⏭  SKIP</span>  No supported opt-out evidence found</span><span class="ln"></span><span class="ln t-bold">  [07] Firewall Status</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-green">✅ SAFE</span>  UFW firewall is active</span><span class="ln"></span><span class="ln t-dim">  [08–16] 9 more areas skipped in this example</span><span class="ln"></span><span class="ln t-dim">──────────────────────────────────────────────────────────────</span><span class="ln t-bold">  YOUR COOKED SCORE</span><span class="ln"></span><span class="ln">  <span class="t-heat">28%</span> <span class="t-dim">cooked</span>  [<span class="t-red">▒▒▒▒▒▒▒▒▒▒▒                             </span>]</span><span class="ln"></span><span class="ln t-heat">  SLIGHTLY WARM</span><span class="ln"></span><span class="ln">  <span class="t-red t-bold">2</span> critical  <span class="t-yellow t-bold">2</span> warnings  <span class="t-green t-bold">3</span> passed</span><span class="ln">  <span class="t-cyan">0</span> unknown  <span class="t-dim">11 skipped  (18 results)</span></span><span class="ln"></span><span class="ln t-red">  Fix critical findings first.</span><span class="ln"></span><span class="ln"><span class="t-prompt">~</span> $ <span class="caret"></span></span></pre>
+          <figcaption class="terminal-foot">Example data. This page does not scan your device.</figcaption>
+        </figure>
       </section>
+
       <div class="container">
         <div class="platforms" id="stack" aria-label="Tools with supported checks">
-          <span class="platform-label">For your local AI stack</span>
-          <span class="platform-item"><img src="./assets/platforms/ollama.svg" alt="" width="32" height="32" /><span>Ollama</span></span>
-          <span class="platform-item"><img src="./assets/platforms/lmstudio.svg" alt="" width="32" height="32" /><span>LM Studio</span></span>
-          <span class="platform-item"><img src="./assets/platforms/vllm.svg" alt="" width="32" height="32" /><span>vLLM</span></span>
-          <span class="platform-item"><img src="./assets/platforms/docker.svg" alt="" width="32" height="32" /><span>Docker</span></span>
-          <span class="platform-item"><img src="./assets/platforms/mcp.png" alt="" width="32" height="32" /><span>MCP</span></span>
-          <span class="platform-item"><img src="./assets/platforms/openclaw.svg" alt="" width="32" height="32" /><span>OpenClaw</span></span>
+          <span class="platform-label">Checks for</span>
+          <span class="platform-item"><img src="./assets/platforms/ollama.svg" alt="" width="28" height="28" />Ollama</span>
+          <span class="platform-item"><img src="./assets/platforms/lmstudio.svg" alt="" width="28" height="28" />LM Studio</span>
+          <span class="platform-item"><img src="./assets/platforms/vllm.svg" alt="" width="28" height="28" />vLLM</span>
+          <span class="platform-item"><img src="./assets/platforms/docker.svg" alt="" width="28" height="28" />Docker</span>
+          <span class="platform-item"><img src="./assets/platforms/mcp.png" alt="" width="28" height="28" />MCP</span>
+          <span class="platform-item"><img src="./assets/platforms/openclaw.svg" alt="" width="28" height="28" />OpenClaw</span>
         </div>
       </div>
-      <section
-        class="coverage container section"
-        id="checks"
-        aria-labelledby="coverage-heading"
-      >
+
+      <section class="coverage container section" id="checks" aria-labelledby="coverage-heading">
         <div class="section-intro">
-          <h2 id="coverage-heading">
-            Know what needs<br />
-            your attention.
-          </h2>
-          <p>
-            16 check areas.<br />
-            One local report.
+          <div>
+            <span class="eyebrow">What it examines</span>
+            <h2 id="coverage-heading">Sixteen places<br />things go wrong.</h2>
+          </div>
+          <p class="lead">
+            Each check reports what it saw and what it could not see. A skipped
+            check never counts as safe.
           </p>
         </div>
         <div class="coverage-layout">
-          <div
-            class="category-nav enhancement"
-            role="group"
-            aria-label="Check categories"
-            hidden
-          >
-            <button
-              type="button"
-              data-category="network"
-              aria-pressed="true"
-              aria-controls="coverage-network"
-            >
-              <span aria-hidden="true">01</span>Network &amp; access
+          <div class="category-nav enhancement" role="group" aria-label="Check categories" hidden>
+            <button type="button" data-category="network" aria-pressed="true" aria-controls="coverage-network">
+              Network &amp; access<span aria-hidden="true">4 checks</span>
             </button>
-            <button
-              type="button"
-              data-category="files"
-              aria-pressed="false"
-              aria-controls="coverage-files"
-            >
-              <span aria-hidden="true">02</span>Files &amp; secrets
+            <button type="button" data-category="files" aria-pressed="false" aria-controls="coverage-files">
+              Files &amp; secrets<span aria-hidden="true">3 checks</span>
             </button>
-            <button
-              type="button"
-              data-category="containers"
-              aria-pressed="false"
-              aria-controls="coverage-containers"
-            >
-              <span aria-hidden="true">03</span>Containers &amp; hardware
+            <button type="button" data-category="containers" aria-pressed="false" aria-controls="coverage-containers">
+              Containers &amp; hardware<span aria-hidden="true">3 checks</span>
             </button>
-            <button
-              type="button"
-              data-category="agents"
-              aria-pressed="false"
-              aria-controls="coverage-agents"
-            >
-              <span aria-hidden="true">04</span>Agents &amp; models
+            <button type="button" data-category="agents" aria-pressed="false" aria-controls="coverage-agents">
+              Agents &amp; models<span aria-hidden="true">6 checks</span>
             </button>
           </div>
           <div class="coverage-content">
-            <div
-              class="coverage-panel"
-              id="coverage-network"
-              data-panel="network"
-            >
+            <div class="coverage-panel" id="coverage-network" data-panel="network">
               <h3 class="category-heading">Network &amp; access</h3>
               <details class="check" open>
                 <summary>
                   <span class="check-number">01.1</span
-                  ><span
-                    ><strong>Network exposure</strong
-                    ><span class="check-description"
-                      >Find listeners on common AI ports.</span
-                    ></span
-                  >
+                  ><span><strong>Network exposure</strong><span class="check-description">Find listeners on common AI ports.</span></span>
                 </summary>
                 <div class="check-detail">
                   The scanner identifies loopback and non-loopback bindings. A
@@ -342,12 +149,7 @@
               <details class="check">
                 <summary>
                   <span class="check-number">01.2</span
-                  ><span
-                    ><strong>API authentication</strong
-                    ><span class="check-description"
-                      >Examine model-list routes on identified services.</span
-                    ></span
-                  >
+                  ><span><strong>API authentication</strong><span class="check-description">Examine model-list routes on identified services.</span></span>
                 </summary>
                 <div class="check-detail">
                   Supports Ollama, LM Studio, and vLLM on their common ports. An
@@ -357,12 +159,7 @@
               <details class="check">
                 <summary>
                   <span class="check-number">01.3</span
-                  ><span
-                    ><strong>Firewall status</strong
-                    ><span class="check-description"
-                      >Separate active, inactive, and unknown states.</span
-                    ></span
-                  >
+                  ><span><strong>Firewall status</strong><span class="check-description">Separate active, inactive, and unknown states.</span></span>
                 </summary>
                 <div class="check-detail">
                   Examines recognized firewall backends. Missing access or an
@@ -372,12 +169,7 @@
               <details class="check">
                 <summary>
                   <span class="check-number">01.4</span
-                  ><span
-                    ><strong>Plain HTTP exposure</strong
-                    ><span class="check-description"
-                      >Find exposed services that use plain HTTP.</span
-                    ></span
-                  >
+                  ><span><strong>Plain HTTP exposure</strong><span class="check-description">Find exposed services that use plain HTTP.</span></span>
                 </summary>
                 <div class="check-detail">
                   The SSL/TLS check examines common ports. It does not validate
@@ -390,13 +182,7 @@
               <details class="check">
                 <summary>
                   <span class="check-number">02.1</span
-                  ><span
-                    ><strong>Model file permissions</strong
-                    ><span class="check-description"
-                      >Find model files that other users can read or
-                      change.</span
-                    ></span
-                  >
+                  ><span><strong>Model file permissions</strong><span class="check-description">Find model files that other users can read or change.</span></span>
                 </summary>
                 <div class="check-detail">
                   Examines common model directories and their permissions.
@@ -406,12 +192,7 @@
               <details class="check">
                 <summary>
                   <span class="check-number">02.2</span
-                  ><span
-                    ><strong>Sensitive files</strong
-                    ><span class="check-description"
-                      >Find exposed environment files and ownership risks.</span
-                    ></span
-                  >
+                  ><span><strong>Sensitive files</strong><span class="check-description">Find exposed environment files and ownership risks.</span></span>
                 </summary>
                 <div class="check-detail">
                   Uses bounded searches for key-like values in environment
@@ -421,13 +202,7 @@
               <details class="check">
                 <summary>
                   <span class="check-number">02.3</span
-                  ><span
-                    ><strong>History &amp; logs</strong
-                    ><span class="check-description"
-                      >Find possible keys in history and exposed log
-                      directories.</span
-                    ></span
-                  >
+                  ><span><strong>History &amp; logs</strong><span class="check-description">Find possible keys in history and exposed log directories.</span></span>
                 </summary>
                 <div class="check-detail">
                   Examines known shell-history patterns and common AI log
@@ -436,22 +211,12 @@
                 </div>
               </details>
             </div>
-            <div
-              class="coverage-panel"
-              id="coverage-containers"
-              data-panel="containers"
-            >
+            <div class="coverage-panel" id="coverage-containers" data-panel="containers">
               <h3 class="category-heading">Containers &amp; hardware</h3>
               <details class="check">
                 <summary>
                   <span class="check-number">03.1</span
-                  ><span
-                    ><strong>Docker configuration</strong
-                    ><span class="check-description"
-                      >Examine users, privileges, sockets, and host
-                      access.</span
-                    ></span
-                  >
+                  ><span><strong>Docker configuration</strong><span class="check-description">Examine users, privileges, sockets, and host access.</span></span>
                 </summary>
                 <div class="check-detail">
                   Includes host networking, daemon sockets, and host-root
@@ -462,12 +227,7 @@
               <details class="check">
                 <summary>
                   <span class="check-number">03.2</span
-                  ><span
-                    ><strong>GPU exposure</strong
-                    ><span class="check-description"
-                      >Examine GPU device access and management listeners.</span
-                    ></span
-                  >
+                  ><span><strong>GPU exposure</strong><span class="check-description">Examine GPU device access and management listeners.</span></span>
                 </summary>
                 <div class="check-detail">
                   Includes supported NVIDIA and AMD device checks. Device access
@@ -477,12 +237,7 @@
               <details class="check">
                 <summary>
                   <span class="check-number">03.3</span
-                  ><span
-                    ><strong>AI processes</strong
-                    ><span class="check-description"
-                      >Find known AI processes and their users.</span
-                    ></span
-                  >
+                  ><span><strong>AI processes</strong><span class="check-description">Find known AI processes and their users.</span></span>
                 </summary>
                 <div class="check-detail">
                   Matches known process names and identifies processes that run
@@ -490,38 +245,22 @@
                 </div>
               </details>
             </div>
-            <div
-              class="coverage-panel"
-              id="coverage-agents"
-              data-panel="agents"
-            >
+            <div class="coverage-panel" id="coverage-agents" data-panel="agents">
               <h3 class="category-heading">Agents &amp; models</h3>
               <details class="check">
                 <summary>
                   <span class="check-number">04.1</span
-                  ><span
-                    ><strong>Ollama configuration</strong
-                    ><span class="check-description"
-                      >Examine host, origin, and service settings.</span
-                    ></span
-                  >
+                  ><span><strong>Ollama configuration</strong><span class="check-description">Examine host, origin, and service settings.</span></span>
                 </summary>
                 <div class="check-detail">
-                  Includes <code>OLLAMA_HOST</code>,
-                  <code>OLLAMA_ORIGINS</code>, and supported service-manager
-                  configuration.
+                  Includes <code>OLLAMA_HOST</code>, <code>OLLAMA_ORIGINS</code>,
+                  and supported service-manager configuration.
                 </div>
               </details>
               <details class="check">
                 <summary>
                   <span class="check-number">04.2</span
-                  ><span
-                    ><strong>Browser control</strong
-                    ><span class="check-description"
-                      >Find browser debugging listeners, including custom
-                      ports.</span
-                    ></span
-                  >
+                  ><span><strong>Browser control</strong><span class="check-description">Find browser debugging listeners, including custom ports.</span></span>
                 </summary>
                 <div class="check-detail">
                   Uses Chromium process flags, sockets, and version metadata. It
@@ -531,13 +270,7 @@
               <details class="check">
                 <summary>
                   <span class="check-number">04.3</span
-                  ><span
-                    ><strong>MCP configuration</strong
-                    ><span class="check-description"
-                      >Examine filesystem grants and configuration
-                      permissions.</span
-                    ></span
-                  >
+                  ><span><strong>MCP configuration</strong><span class="check-description">Examine filesystem grants and configuration permissions.</span></span>
                 </summary>
                 <div class="check-detail">
                   Model Context Protocol (MCP) checks support selected Claude
@@ -548,13 +281,7 @@
               <details class="check">
                 <summary>
                   <span class="check-number">04.4</span
-                  ><span
-                    ><strong>OpenClaw gateway</strong
-                    ><span class="check-description"
-                      >Examine authentication and tool settings for selected
-                      OpenClaw CLI versions.</span
-                    ></span
-                  >
+                  ><span><strong>OpenClaw gateway</strong><span class="check-description">Examine authentication and tool settings for selected OpenClaw CLI versions.</span></span>
                 </summary>
                 <div class="check-detail">
                   The check reads the OpenClaw CLI version and selected global
@@ -565,13 +292,7 @@
               <details class="check">
                 <summary>
                   <span class="check-number">04.5</span
-                  ><span
-                    ><strong>Remote model code</strong
-                    ><span class="check-description"
-                      >Find remote-code flags in active vLLM and TGI
-                      commands.</span
-                    ></span
-                  >
+                  ><span><strong>Remote model code</strong><span class="check-description">Find remote-code flags in active vLLM and TGI commands.</span></span>
                 </summary>
                 <div class="check-detail">
                   The check examines recognized launch arguments. It does not
@@ -581,13 +302,7 @@
               <details class="check">
                 <summary>
                   <span class="check-number">04.6</span
-                  ><span
-                    ><strong>Telemetry settings</strong
-                    ><span class="check-description"
-                      >Examine opt-out variables and known blocked
-                      domains.</span
-                    ></span
-                  >
+                  ><span><strong>Telemetry settings</strong><span class="check-description">Examine opt-out variables and known blocked domains.</span></span>
                 </summary>
                 <div class="check-detail">
                   Examines supported environment variables and exact hosts-file
@@ -596,74 +311,161 @@
               </details>
             </div>
             <p class="coverage-note">
-              Checks can be skipped or incomplete. A low score is not a security
-              guarantee.
+              Checks can be skipped or incomplete. A low score is not a security guarantee.
             </p>
           </div>
         </div>
       </section>
-      <section
-        class="score-guide"
-        id="score-guide"
-        aria-labelledby="score-heading"
-      >
-        <div class="container score-guide-inner">
+
+      <section class="doneness" id="doneness" aria-labelledby="score-heading">
+        <div class="container section">
+          <div class="section-intro">
+            <div>
+              <span class="eyebrow">How the score works</span>
+              <h2 id="score-heading">Check the<br /><span>doneness.</span></h2>
+            </div>
+            <p class="lead">
+              Every finding adds heat. Change the counts and watch the verdict
+              move. This uses the same rules as the scanner.
+            </p>
+          </div>
+          <div class="sim" id="score-guide">
+            <div>
+              <div class="sim-inputs" role="group" aria-label="Example result counts">
+                <div class="stepper">
+                  <span class="dot dot-critical" aria-hidden="true"></span>
+                  <span class="stepper-name">Critical<small>🔥 COOKED · examine first</small></span>
+                  <span class="stepper-points">+10 each</span>
+                  <span class="stepper-control">
+                    <button type="button" data-step="critical" data-delta="-1" aria-label="Fewer critical findings">−</button
+                    ><output id="count-critical" data-count="critical" aria-live="polite">2</output
+                    ><button type="button" data-step="critical" data-delta="1" aria-label="More critical findings">+</button>
+                  </span>
+                </div>
+                <div class="stepper">
+                  <span class="dot dot-warning" aria-hidden="true"></span>
+                  <span class="stepper-name">Warning<small>⚠ WARMING UP · needs attention</small></span>
+                  <span class="stepper-points">+4 each</span>
+                  <span class="stepper-control">
+                    <button type="button" data-step="warning" data-delta="-1" aria-label="Fewer warnings">−</button
+                    ><output id="count-warning" data-count="warning" aria-live="polite">2</output
+                    ><button type="button" data-step="warning" data-delta="1" aria-label="More warnings">+</button>
+                  </span>
+                </div>
+                <div class="stepper">
+                  <span class="dot dot-unknown" aria-hidden="true"></span>
+                  <span class="stepper-name">Unknown<small>❓ UNKNOWN · could not verify</small></span>
+                  <span class="stepper-points">+4 each</span>
+                  <span class="stepper-control">
+                    <button type="button" data-step="unknown" data-delta="-1" aria-label="Fewer unknown results">−</button
+                    ><output id="count-unknown" data-count="unknown" aria-live="polite">0</output
+                    ><button type="button" data-step="unknown" data-delta="1" aria-label="More unknown results">+</button>
+                  </span>
+                </div>
+                <div class="stepper">
+                  <span class="dot dot-passed" aria-hidden="true"></span>
+                  <span class="stepper-name">Passed<small>✅ SAFE · check passed</small></span>
+                  <span class="stepper-points">+0</span>
+                  <span class="stepper-control">
+                    <button type="button" data-step="passed" data-delta="-1" aria-label="Fewer passed checks">−</button
+                    ><output id="count-passed" data-count="passed" aria-live="polite">3</output
+                    ><button type="button" data-step="passed" data-delta="1" aria-label="More passed checks">+</button>
+                  </span>
+                </div>
+                <div class="stepper">
+                  <span class="dot dot-skipped" aria-hidden="true"></span>
+                  <span class="stepper-name">Skipped<small>⏭ SKIP · not examined</small></span>
+                  <span class="stepper-points">+0</span>
+                  <span class="stepper-control">
+                    <button type="button" data-step="skipped" data-delta="-1" aria-label="Fewer skipped checks">−</button
+                    ><output id="count-skipped" data-count="skipped" aria-live="polite">11</output
+                    ><button type="button" data-step="skipped" data-delta="1" aria-label="More skipped checks">+</button>
+                  </span>
+                </div>
+              </div>
+              <div class="sim-presets enhancement" role="group" aria-label="Example setups" hidden>
+                <button class="chip" type="button" data-preset="2,2,0,3,11">The example scan</button>
+                <button class="chip" type="button" data-preset="0,0,0,16,0">Locked down</button>
+                <button class="chip" type="button" data-preset="0,0,6,0,10">Nothing to inspect</button>
+                <button class="chip" type="button" data-preset="5,4,3,2,2">Weekend homelab</button>
+                <button class="chip" type="button" data-preset="0,0,0,0,0">Reset</button>
+              </div>
+            </div>
+
+            <div class="sim-output" aria-live="polite">
+              <div class="sim-score">
+                <b><span id="sim-value">28</span><small>%</small></b>
+                <span class="sim-verdict" id="sim-verdict">SLIGHTLY WARM</span>
+              </div>
+              <div class="heat-scale" aria-hidden="true">
+                <div class="heat-bar"></div>
+                <span class="heat-marker" id="sim-marker"></span>
+                <div class="heat-bands">
+                  <span><b>0</b>Fresh</span>
+                  <span><b>15</b>Slightly warm</span>
+                  <span><b>40</b>Medium rare</span>
+                  <span><b>70</b>Fully cooked</span>
+                </div>
+              </div>
+              <pre class="sim-terminal" id="sim-terminal">  <span class="t-heat">28%</span> <span class="t-dim">cooked</span>  [<span class="t-red">▒▒▒▒▒▒▒▒▒▒▒                             </span>]
+
+  <span class="t-heat">SLIGHTLY WARM</span>
+
+  <span class="t-red t-bold">2</span> critical  <span class="t-yellow t-bold">2</span> warnings  <span class="t-green t-bold">3</span> passed
+  <span class="t-cyan">0</span> unknown  <span class="t-dim">11 skipped  (18 results)</span>
+
+  <span class="t-red">Fix critical findings first.</span></pre>
+              <p class="sim-explain" id="sim-explain">
+                <strong>2 × 10 + 2 × 4 = 28.</strong> Any critical finding turns
+                the verdict red, whatever the number.
+              </p>
+            </div>
+          </div>
+          <p class="coverage-note">
+            The total stops at 100. The score is a capped heuristic, not a probability of compromise.
+            <a href="./unknowns.html">Resolve unknown results</a> ·
+            <a href="https://github.com/johnpippett/iscooked#scoring">Read the scoring guide</a>
+          </p>
+        </div>
+      </section>
+
+      <section class="container section" id="report" aria-labelledby="plate-heading">
+        <div class="plate">
           <div>
-            <h2 id="score-heading">
-              Understand<br />
-              the result.
-            </h2>
-            <p>
-              Start with critical findings. Then examine warnings and incomplete
-              checks.
+            <span class="eyebrow">New · Report viewer</span>
+            <h2 id="plate-heading">Plate your<br /><span>report.</span></h2>
+            <p class="lead">
+              Save a JSON report and open it in the viewer. Findings get grouped
+              by check, unknowns link to their fix, and you can copy a clean
+              summary for an issue or a teammate.
             </p>
-            <a href="./unknowns.html"
-              >Resolve unknown results <span aria-hidden="true">↗</span></a
-            >
-            <a href="https://github.com/johnpippett/iscooked#scoring"
-              >Read the scoring guide <span aria-hidden="true">↗</span></a
-            >
+            <ol class="plate-steps">
+              <li><span>01</span><div>Run <code>bash iscooked.com --json &gt; cooked.json</code></div></li>
+              <li><span>02</span><div>Drop <code>cooked.json</code> into the viewer.</div></li>
+              <li><span>03</span><div>The file is read by your browser. The viewer page blocks all network requests.</div></li>
+            </ol>
+            <a class="button button-primary" href="./report.html"
+              >Open the report viewer
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 12h15m-6-6 6 6-6 6" /></svg
+            ></a>
           </div>
-          <div class="legend">
-            <div>
-              <span class="legend-dot critical-bg"></span
-              ><strong>Critical</strong><span>Examine first</span
-              ><code>+10</code>
-            </div>
-            <div>
-              <span class="legend-dot warning-bg"></span><strong>Warning</strong
-              ><span>Needs attention</span><code>+4</code>
-            </div>
-            <div>
-              <span class="legend-dot unknown-bg"></span><strong>Unknown</strong
-              ><span>Could not verify</span><code>+4</code>
-            </div>
-            <div>
-              <span class="legend-dot passed-bg"></span><strong>Passed</strong
-              ><span>Check passed</span><code>+0</code>
-            </div>
-            <div>
-              <span class="legend-dot skipped-bg"></span><strong>Skipped</strong
-              ><span>Not examined</span><code>+0</code>
-            </div>
-            <p>
-              Points apply to each finding. The total stops at 100.<br />The
-              score is not a probability of compromise.
-            </p>
+          <div class="plate-preview" aria-label="Report viewer preview">
+            <div class="plate-row"><span class="pill pill-critical">Critical</span><span>Port 8000 listens on all interfaces</span></div>
+            <div class="plate-row"><span class="pill pill-critical">Critical</span><span>Files in /srv/models are world-writable</span></div>
+            <div class="plate-row"><span class="pill pill-warning">Warning</span><span>Ollama model list needs no authentication</span></div>
+            <div class="plate-row"><span class="pill pill-warning">Warning</span><span>Container uses host networking</span></div>
+            <div class="plate-row"><span class="pill pill-unknown">Unknown</span><span>Docker daemon inspection incomplete · <a href="./unknowns.html#docker">next step</a></span></div>
+            <div class="plate-row"><span class="pill pill-passed">Passed</span><span>UFW firewall is active</span></div>
+            <div class="plate-row"><span class="pill pill-skipped">Skipped</span><span>No GPU devices detected</span></div>
           </div>
         </div>
       </section>
-      <section
-        class="install container section"
-        id="install"
-        aria-labelledby="install-heading"
-      >
+
+      <section class="install container section" id="install" aria-labelledby="install-heading">
         <div class="install-intro">
-          <h2 id="install-heading">
-            Your machine.<br />
-            Your scan.
-          </h2>
-          <p>Read the source. Run the scanner.<br />Examine the findings.</p>
+          <span class="eyebrow">Run it</span>
+          <h2 id="install-heading">Your machine.<br /><span>Your scan.</span></h2>
+          <p class="lead">Read the source. Run the scanner. Examine the findings.</p>
           <ol class="steps">
             <li>Get the script</li>
             <li>Run it locally</li>
@@ -672,181 +474,135 @@
         </div>
         <div class="install-right">
           <div class="command-panel">
-            <div
-              class="install-tabs enhancement"
-              role="group"
-              aria-label="Installation method"
-              hidden
-            >
-              <button
-                type="button"
-                data-install="quick"
-                aria-pressed="true"
-                aria-controls="install-quick"
-              >
-                Quick run</button
-              ><button
-                type="button"
-                data-install="inspect"
-                aria-pressed="false"
-                aria-controls="install-inspect"
-              >
-                Download &amp; read
-              </button>
+            <div class="install-tabs enhancement" role="group" aria-label="Installation method" hidden>
+              <button type="button" data-install="quick" aria-pressed="true" aria-controls="install-quick">Quick run</button
+              ><button type="button" data-install="inspect" aria-pressed="false" aria-controls="install-inspect">Download &amp; read</button
+              ><button type="button" data-install="json" aria-pressed="false" aria-controls="install-json">Save a report</button>
             </div>
             <div id="install-quick" class="install-method" data-method="quick">
               <h3 class="method-heading">Quick run</h3>
-              <p class="command-description">
-                Downloads and runs the script in your terminal.
-              </p>
+              <p class="command-description">Downloads and runs the script in your terminal.</p>
               <div class="command-box">
                 <pre><code id="quick-command">curl -fsSL https://iscooked.com/iscooked.com | bash</code></pre>
-                <button
-                  class="copy-button enhancement"
-                  type="button"
-                  data-copy="quick-command"
-                  aria-label="Copy quick run command"
-                  hidden
-                >
-                  Copy
-                </button>
+                <button class="copy-button enhancement" type="button" data-copy="quick-command" aria-label="Copy quick run command" hidden>Copy</button>
               </div>
             </div>
-            <div
-              id="install-inspect"
-              class="install-method"
-              data-method="inspect"
-            >
+            <div id="install-inspect" class="install-method" data-method="inspect">
               <h3 class="method-heading">Download &amp; read</h3>
-              <p class="command-description">
-                1. Download the script and read it.
-              </p>
+              <p class="command-description">1. Download the script and read it.</p>
               <div class="command-box">
                 <pre><code id="inspect-command">curl -fsSL https://iscooked.com/iscooked.com -o iscooked.com &amp;&amp;
 less iscooked.com</code></pre>
-                <button
-                  class="copy-button enhancement"
-                  type="button"
-                  data-copy="inspect-command"
-                  aria-label="Copy download and read command"
-                  hidden
-                >
-                  Copy
-                </button>
+                <button class="copy-button enhancement" type="button" data-copy="inspect-command" aria-label="Copy download and read command" hidden>Copy</button>
               </div>
               <p class="command-description">2. Start it when you are ready.</p>
               <div class="command-box">
                 <pre><code id="run-command">bash iscooked.com</code></pre>
-                <button
-                  class="copy-button enhancement"
-                  type="button"
-                  data-copy="run-command"
-                  aria-label="Copy run command"
-                  hidden
-                >
-                  Copy
-                </button>
+                <button class="copy-button enhancement" type="button" data-copy="run-command" aria-label="Copy run command" hidden>Copy</button>
               </div>
             </div>
-            <div class="command-footer">
-              <span>Linux or macOS · Bash 4+</span
-              ><a href="./iscooked.com"
-                >Read the source <span aria-hidden="true">↗</span></a
-              >
+            <div id="install-json" class="install-method" data-method="json">
+              <h3 class="method-heading">Save a report</h3>
+              <p class="command-description">1. Write one JSON report. Requires Python 3.</p>
+              <div class="command-box">
+                <pre><code id="json-command">bash iscooked.com --json &gt; cooked.json</code></pre>
+                <button class="copy-button enhancement" type="button" data-copy="json-command" aria-label="Copy JSON report command" hidden>Copy</button>
+              </div>
+              <p class="command-description">2. Open it in the <a href="./report.html">report viewer</a>. Add <code>--fail-on critical</code> to exit 1 when a critical finding occurs.</p>
             </div>
-            <p
-              class="copy-status"
-              id="copy-status"
-              aria-live="polite"
-              role="status"
-            ></p>
+            <div class="command-footer">
+              <span>Linux or macOS · Bash 4+</span><a href="./iscooked.com">Read the source <span aria-hidden="true">↗</span></a>
+            </div>
+            <p class="copy-status" id="copy-status" aria-live="polite" role="status"></p>
           </div>
           <div class="requirements">
             <p>
-              <strong>Before you run it:</strong> Run
-              <code>bash --version</code>. These commands require Bash 4 or
-              later. On macOS, the system Bash can be too old. Use the path to
-              your newer Bash executable if necessary.
+              <strong>Before you run it:</strong> run <code>bash --version</code>.
+              The scanner requires Bash 4 or later. On macOS, the system Bash can
+              be too old. Use the path to your newer Bash executable if necessary.
             </p>
             <p>
               Python 3 enables structured checks. Missing optional tools cause
-              skipped checks.
+              skipped checks. <a href="./unknowns.html">Unknown or skipped results? Find the next step.</a>
             </p>
             <p>
-              <a href="./unknowns.html">Unknown or skipped results? Find the next step.</a>
+              Use <code>bash iscooked.com --help</code> for options.
+              <a href="https://github.com/johnpippett/iscooked#requirements">Full requirements ↗</a>
             </p>
-            <p>
-              After download, use <code>bash iscooked.com --help</code> for
-              options. Use <code>--json</code> to save a report, or
-              <code>--fail-on critical</code> for a failure exit when critical
-              findings occur. JSON output requires Python 3.
-            </p>
-            <a href="https://github.com/johnpippett/iscooked#requirements"
-              >Full requirements <span aria-hidden="true">↗</span></a
-            >
           </div>
           <!-- prettier-ignore -->
           <div class="hero-badge">Open source · MIT License · <span>v1.2.1</span></div>
         </div>
       </section>
+
       <section class="faq container" aria-labelledby="faq-heading">
         <h2 id="faq-heading">Before you run it.</h2>
         <div class="faq-grid">
-          <details open>
-            <summary>Does it change my settings?</summary>
-            <p>
-              The scanner examines local settings. It does not apply fixes,
-              start agents, or load models. You decide which settings to change.
-            </p>
-          </details>
-          <details>
-            <summary>Does anything leave my machine?</summary>
-            <p>
-              The initial command downloads the script. The scanner sends no
-              telemetry or scan report. It probes selected local AI and browser
-              service endpoints.
-            </p>
-          </details>
-          <details>
-            <summary>What does the score mean?</summary>
-            <p>
-              Critical findings add 10 points. Warnings and unknown findings add
-              4. Passed and skipped checks add none. The maximum is 100.
-            </p>
-            <p>
-              One category can produce multiple findings. A low score does not
-              establish that your system is safe.
-            </p>
-          </details>
-          <details>
-            <summary>What can it miss?</summary>
-            <p>
-              Unsupported tools, inaccessible files, missing dependencies, and
-              configuration formats can limit coverage. A skipped check does not
-              establish safety.
-            </p>
-            <p>
-              <a
-                href="https://github.com/johnpippett/iscooked#coverage-limits"
-                >Read the coverage limits <span aria-hidden="true">↗</span></a
-              >
-            </p>
-          </details>
+          <div>
+            <details open>
+              <summary>Does it change my settings?</summary>
+              <p>
+                No. The scanner examines local settings. It does not apply fixes,
+                start agents, or load models. You decide which settings to change.
+              </p>
+            </details>
+            <details>
+              <summary>Does anything leave my machine?</summary>
+              <p>
+                The initial command downloads the script. The scanner sends no
+                telemetry or scan report. It probes selected local AI and browser
+                service endpoints.
+              </p>
+            </details>
+            <details>
+              <summary>Does the report viewer upload my report?</summary>
+              <p>
+                No. Your browser reads the file. The viewer page is served with a
+                content security policy that blocks every network request, so the
+                page cannot send the report anywhere.
+              </p>
+            </details>
+          </div>
+          <div>
+            <details>
+              <summary>What does the score mean?</summary>
+              <p>
+                Critical findings add 10 points. Warnings and unknown findings add
+                4. Passed and skipped checks add none. The maximum is 100. A low
+                score does not establish that your system is safe.
+              </p>
+            </details>
+            <details>
+              <summary>What can it miss?</summary>
+              <p>
+                Unsupported tools, inaccessible files, missing dependencies, and
+                configuration formats can limit coverage. A skipped check does not
+                establish safety.
+                <a href="https://github.com/johnpippett/iscooked#coverage-limits">Read the coverage limits ↗</a>
+              </p>
+            </details>
+            <details>
+              <summary>Why is it called iscooked?</summary>
+              <p>
+                Because "am I cooked?" is the question you ask after you notice
+                Ollama listening on 0.0.0.0. The scanner answers it with evidence.
+              </p>
+            </details>
+          </div>
         </div>
       </section>
     </main>
+
     <footer class="container site-footer">
-      <a class="brand footer-brand" href="./"
-        >iscooked<span class="brand-dot">.</span></a
-      >
+      <a class="brand footer-brand" href="./">iscooked<span class="brand-dot">.</span></a>
       <p>Built by <a href="https://pippett.me/">pippett.me</a></p>
       <div class="footer-links">
         <a href="https://github.com/johnpippett/iscooked">GitHub</a
+        ><a href="./report.html">Report viewer</a
+        ><a href="./unknowns.html">Unknown results</a
         ><a href="https://pippett.me/blog/">Blog</a
-        ><a href="https://github.com/johnpippett/iscooked/blob/master/LICENSE"
-          >MIT License</a
+        ><a href="https://github.com/johnpippett/iscooked/blob/master/LICENSE">MIT License</a
         ><a href="./llms.txt">AI usage guide</a>
-        <a href="./unknowns.html">Unknown results</a>
       </div>
     </footer>
   </body>
