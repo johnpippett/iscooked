@@ -181,6 +181,11 @@
       el.classList.add(INK_CLASS[v.color]);
     });
     $("#sim-marker").style.left = `${v.score}%`;
+    const temp = $("#thermal-temp");
+    if (temp) temp.textContent = `${v.score}%`;
+    const thermal = $(".thermal canvas");
+    if (thermal) thermal.dataset.score = String(v.score);
+    document.dispatchEvent(new CustomEvent("iscooked:score", { detail: { score: v.score, target: ".sim-output" } }));
 
     const color = COLOR_CLASS[v.color];
     const term = $("#sim-terminal");

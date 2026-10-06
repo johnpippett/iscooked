@@ -135,6 +135,10 @@
     verdict.className = `summary-verdict ${TERM_CLASS[v.color]}`;
     $("#r-score").parentElement.className = `summary-value ${TERM_CLASS[v.color]}`;
     $("#r-marker").style.left = `${v.score}%`;
+    const thermal = document.querySelector(".fx-summary");
+    if (thermal) thermal.dataset.score = String(v.score);
+    $("#r-thermal-temp").textContent = `${v.score}%`;
+    document.dispatchEvent(new CustomEvent("iscooked:score", { detail: { score: v.score, target: ".summary" } }));
     const message = $("#r-message");
     message.textContent = v.message.text;
     message.className = `summary-message ${TERM_CLASS[v.message.color]}`;

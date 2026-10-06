@@ -12,10 +12,11 @@
     />
     <link rel="canonical" href="https://iscooked.com/report" />
     <link rel="icon" type="image/webp" href="./assets/iscooked-logo-256-v1.webp" />
-    <link rel="stylesheet" href="./assets/theme.css?v=4" />
-    <link rel="stylesheet" href="./assets/report.css?v=1" />
+    <link rel="stylesheet" href="./assets/theme.css?v=5" />
+    <link rel="stylesheet" href="./assets/report.css?v=2" />
     <script src="./assets/score.js?v=1" defer></script>
-    <script src="./assets/report.js?v=1" defer></script>
+    <script src="./assets/report.js?v=2" defer></script>
+    <script src="./assets/fx.js?v=1" type="module"></script>
   </head>
   <body class="report-page">
     <a class="skip-link" href="#main">Skip to content</a>
@@ -74,6 +75,10 @@
         </p>
 
         <div class="summary">
+          <div class="thermal thermal-wide" aria-hidden="true">
+            <canvas class="fx fx-summary" data-fx="thermal" data-score="0"></canvas>
+            <span class="thermal-label">THERMAL VIEW · <b id="r-thermal-temp">0%</b></span>
+          </div>
           <div class="summary-score">
             <h2 id="summary-heading" class="visually-hidden">Report summary</h2>
             <p class="summary-label">Cooked score</p>

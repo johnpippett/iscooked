@@ -125,6 +125,7 @@
   font-size: 14px;
 }
 .summary {
+  overflow: hidden;
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
   gap: 40px;
@@ -316,5 +317,16 @@
   }
   .toolbar-actions {
     width: 100%;
+  }
+}
+.thermal-wide {
+  grid-column: 1 / -1;
+  margin: -32px -32px 0;
+  height: 170px;
+}
+@media (max-width: 700px) {
+  .thermal-wide {
+    margin: -24px -18px 0;
+    height: 130px;
   }
 }
