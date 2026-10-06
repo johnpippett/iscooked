@@ -167,6 +167,11 @@ async function boot() {
       canvas = document.createElement("canvas");
       canvas.className = `chrome-skin chrome-${kind}`;
       canvas.setAttribute("aria-hidden", "true");
+      // The library pins a missing inline size to the measured (possibly tilted) pixel box.
+      // Give it relative sizes so the skin keeps tracking its element.
+      const size = kind === "bezel" ? "calc(100% + 20px)" : "100%";
+      canvas.style.width = size;
+      canvas.style.height = size;
       element.prepend(canvas);
       try {
         instance = await lib.createShader(

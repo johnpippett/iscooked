@@ -26,20 +26,28 @@
       content="One local security scanner for AI services, containers, and agents."
     />
     <meta name="twitter:image" content="https://iscooked.com/assets/og-image.png" />
-    <link rel="icon" type="image/webp" href="./assets/iscooked-logo-256-v1.webp" />
+    <link rel="icon" type="image/svg+xml" href="./assets/brand/favicon.svg" />
     <link rel="preload" href="./assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./assets/fonts/martian-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="./assets/theme.css?v=6" />
+    <link rel="stylesheet" href="./assets/theme.css?v=8" />
     <script src="./assets/score.js?v=1" defer></script>
-    <script src="./assets/app.js?v=4" defer></script>
-    <script src="./assets/fx.js?v=2" type="module"></script>
+    <script src="./assets/app.js?v=5" defer></script>
+    <script src="./assets/fx.js?v=3" type="module"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
+    <svg class="svg-defs" width="0" height="0" aria-hidden="true" focusable="false">
+      <filter id="heat-haze" x="-20%" y="-40%" width="140%" height="180%" color-interpolation-filters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="0.01 0.07" numOctaves="2" seed="7" result="noise">
+          <animate attributeName="baseFrequency" dur="2.6s" values="0.01 0.07;0.014 0.1;0.01 0.07" repeatCount="indefinite" />
+        </feTurbulence>
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="3" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+    </svg>
     <header class="site-header">
       <nav class="container nav" aria-label="Main navigation">
         <a class="brand" href="./" aria-label="iscooked home"
-          ><img src="./assets/iscooked-logo-256-v1.webp" alt="" width="48" height="48" /><span
+          ><span
             >iscooked<span class="brand-dot">.</span></span
           ></a
         >
@@ -57,7 +65,7 @@
       <section class="hero container" aria-labelledby="hero-heading">
         <div class="hero-copy">
           <span class="eyebrow">Local AI security scanner</span>
-          <h1 id="hero-heading">Your AI is local.<br /><span>Is it cooked?</span></h1>
+          <h1 id="hero-heading">Your AI is local.<br /><span class="heat-text">Is it cooked?</span></h1>
           <p class="lead">
             One Bash script checks your model servers, containers, agent configs,
             and MCP grants for the mistakes that get local AI owned. It reads.
@@ -341,7 +349,7 @@
                   <span class="stepper-points">+10 each</span>
                   <span class="stepper-control">
                     <button type="button" data-step="critical" data-delta="-1" aria-label="Fewer critical findings">−</button
-                    ><output id="count-critical" data-count="critical" aria-live="polite">2</output
+                    ><input id="count-critical" data-count="critical" type="number" inputmode="numeric" min="0" max="99" step="1" value="2" aria-label="Critical findings" /
                     ><button type="button" data-step="critical" data-delta="1" aria-label="More critical findings">+</button>
                   </span>
                 </div>
@@ -351,7 +359,7 @@
                   <span class="stepper-points">+4 each</span>
                   <span class="stepper-control">
                     <button type="button" data-step="warning" data-delta="-1" aria-label="Fewer warnings">−</button
-                    ><output id="count-warning" data-count="warning" aria-live="polite">2</output
+                    ><input id="count-warning" data-count="warning" type="number" inputmode="numeric" min="0" max="99" step="1" value="2" aria-label="Warnings" /
                     ><button type="button" data-step="warning" data-delta="1" aria-label="More warnings">+</button>
                   </span>
                 </div>
@@ -361,7 +369,7 @@
                   <span class="stepper-points">+4 each</span>
                   <span class="stepper-control">
                     <button type="button" data-step="unknown" data-delta="-1" aria-label="Fewer unknown results">−</button
-                    ><output id="count-unknown" data-count="unknown" aria-live="polite">0</output
+                    ><input id="count-unknown" data-count="unknown" type="number" inputmode="numeric" min="0" max="99" step="1" value="0" aria-label="Unknown results" /
                     ><button type="button" data-step="unknown" data-delta="1" aria-label="More unknown results">+</button>
                   </span>
                 </div>
@@ -371,7 +379,7 @@
                   <span class="stepper-points">+0</span>
                   <span class="stepper-control">
                     <button type="button" data-step="passed" data-delta="-1" aria-label="Fewer passed checks">−</button
-                    ><output id="count-passed" data-count="passed" aria-live="polite">3</output
+                    ><input id="count-passed" data-count="passed" type="number" inputmode="numeric" min="0" max="99" step="1" value="3" aria-label="Passed checks" /
                     ><button type="button" data-step="passed" data-delta="1" aria-label="More passed checks">+</button>
                   </span>
                 </div>
@@ -381,17 +389,22 @@
                   <span class="stepper-points">+0</span>
                   <span class="stepper-control">
                     <button type="button" data-step="skipped" data-delta="-1" aria-label="Fewer skipped checks">−</button
-                    ><output id="count-skipped" data-count="skipped" aria-live="polite">11</output
+                    ><input id="count-skipped" data-count="skipped" type="number" inputmode="numeric" min="0" max="99" step="1" value="11" aria-label="Skipped checks" /
                     ><button type="button" data-step="skipped" data-delta="1" aria-label="More skipped checks">+</button>
                   </span>
                 </div>
               </div>
-              <div class="sim-presets enhancement" role="group" aria-label="Example setups" hidden>
-                <button class="chip" type="button" data-preset="2,2,0,3,11">The example scan</button>
-                <button class="chip" type="button" data-preset="0,0,0,16,0">Locked down</button>
-                <button class="chip" type="button" data-preset="0,0,6,0,10">Nothing to inspect</button>
-                <button class="chip" type="button" data-preset="5,4,3,2,2">Weekend homelab</button>
-                <button class="chip" type="button" data-preset="0,0,0,0,0">Reset</button>
+              <div class="sim-presets enhancement" hidden>
+                <div class="presets-head">
+                  <span class="presets-label" id="presets-label">Try a setup</span>
+                  <button class="presets-reset" type="button" data-preset="0,0,0,0,0" aria-label="Reset all counts to zero">Reset</button>
+                </div>
+                <div class="presets-grid" role="group" aria-labelledby="presets-label">
+                  <button class="preset" type="button" data-preset="2,2,0,3,11"><b>The example scan</b><span data-preset-verdict></span></button>
+                  <button class="preset" type="button" data-preset="0,0,0,16,0"><b>Locked down</b><span data-preset-verdict></span></button>
+                  <button class="preset" type="button" data-preset="0,0,6,0,10"><b>Nothing to inspect</b><span data-preset-verdict></span></button>
+                  <button class="preset" type="button" data-preset="5,4,3,2,2"><b>Weekend homelab</b><span data-preset-verdict></span></button>
+                </div>
               </div>
             </div>
 
@@ -602,7 +615,7 @@ less iscooked.com</code></pre>
 
     <footer class="container site-footer">
       <a class="brand footer-brand" href="./">iscooked<span class="brand-dot">.</span></a>
-      <p>Built by <a href="https://pippett.me/">pippett.me</a></p>
+      <a class="built-by" href="https://pippett.me/"><img src="./assets/brand/pippett-portrait.webp" alt="" width="32" height="32" /><span>Built by <b>pippett.me</b></span></a>
       <div class="footer-links">
         <a href="https://github.com/johnpippett/iscooked">GitHub</a
         ><a href="./report.html">Report viewer</a

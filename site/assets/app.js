@@ -165,11 +165,13 @@
     if (!window.IsCooked || !$("#sim-value")) return;
     const v = window.IsCooked.verdict(counts);
     KEYS.forEach((key) => {
-      $(`[data-count="${key}"]`).textContent = counts[key];
+      const field = $(`[data-count="${key}"]`);
+      // Leave a field alone while someone is typing in it.
+      if (document.activeElement !== field) field.value = counts[key];
     });
     $$("[data-step]").forEach((button) => {
       if (Number(button.dataset.delta) < 0) button.disabled = counts[button.dataset.step] === 0;
-      else button.disabled = counts[button.dataset.step] >= 30;
+      else button.disabled = counts[button.dataset.step] >= 99;
     });
 
     const value = $("#sim-value");
@@ -231,12 +233,43 @@
   $$("[data-step]").forEach((button) =>
     button.addEventListener("click", () => {
       const key = button.dataset.step;
-      counts[key] = Math.max(0, Math.min(30, counts[key] + Number(button.dataset.delta)));
+      counts[key] = Math.max(0, Math.min(99, counts[key] + Number(button.dataset.delta)));
       $$("[data-preset]").forEach((chip) => chip.setAttribute("aria-pressed", "false"));
       renderSim();
     }),
   );
+  $$("[data-count]").forEach((field) => {
+    const key = field.dataset.count;
+    field.addEventListener("input", () => {
+      if (field.value === "") return;
+      const n = Math.max(0, Math.min(99, Math.floor(Number(field.value)) || 0));
+      counts[key] = n;
+      $$("[data-preset]").forEach((chip) => chip.setAttribute("aria-pressed", "false"));
+      renderSim();
+    });
+    // An emptied or out-of-range field snaps back to the value in use.
+    field.addEventListener("blur", () => {
+      field.value = counts[key];
+    });
+  });
+
   $$("[data-preset]").forEach((chip) => {
+    const label = chip.querySelector("[data-preset-verdict]");
+    if (label && window.IsCooked) {
+      const [critical, warning, unknown, passed, skipped] = chip.dataset.preset.split(",").map(Number);
+      const v = window.IsCooked.verdict({ critical, warning, unknown, passed, skipped });
+      label.textContent = `${v.score}% · ${v.text.toLowerCase()}`;
+    }
+    if (chip.classList.contains("presets-reset")) {
+      chip.addEventListener("click", () => {
+        KEYS.forEach((key) => {
+          counts[key] = 0;
+        });
+        $$("[data-preset]").forEach((other) => other.setAttribute("aria-pressed", "false"));
+        renderSim();
+      });
+      return;
+    }
     chip.setAttribute("aria-pressed", "false");
     chip.addEventListener("click", () => {
       chip.dataset.preset.split(",").map(Number).forEach((n, i) => {
