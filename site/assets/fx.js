@@ -1,17 +1,38 @@
-// WebGPU heat effects. Pure decoration: the page is complete without them.
-// Loads the shader library only when the browser has WebGPU and motion is welcome.
+// Hover chrome, lean, and thermal views. Pure decoration: the page is complete without them.
+// Tilt runs everywhere motion is welcome. The shader library loads only with WebGPU.
 
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-const canvases = [...document.querySelectorAll("canvas[data-fx]")];
-
+const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const clamp01 = (n) => Math.max(0, Math.min(1, n));
 
-// Score (0-100) → how hot each effect runs.
+const CHROME_TARGETS = ".chrome-wrap, .button-primary, .button-outline, .oneliner .copy-button";
+const chromeTargets = [...document.querySelectorAll(CHROME_TARGETS)];
+const thermals = [...document.querySelectorAll("canvas[data-fx='thermal']")];
+
+// ─── Lean ───────────────────────────────────────────────
+// Elements tilt toward the cursor. Big panels lean more than buttons.
+function lean(element, event) {
+  const rect = element.getBoundingClientRect();
+  const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  const y = ((event.clientY - rect.top) / rect.height) * 2 - 1;
+  const max = element.classList.contains("chrome-wrap") ? 6 : 10;
+  element.style.setProperty("--lean-x", `${(-y * max).toFixed(2)}deg`);
+  element.style.setProperty("--lean-y", `${(x * max).toFixed(2)}deg`);
+  element.style.setProperty("--glint-x", `${((x + 1) * 50).toFixed(1)}%`);
+  element.style.setProperty("--glint-y", `${((y + 1) * 50).toFixed(1)}%`);
+  return x;
+}
+
+function settle(element) {
+  element.style.setProperty("--lean-x", "0deg");
+  element.style.setProperty("--lean-y", "0deg");
+}
+
+// ─── Shader helpers ─────────────────────────────────────
 function heat(score) {
   const t = clamp01(score / 100);
   return {
-    t,
     heatmap: {
       scale: 0.55 + 0.7 * t,
       speed: 0.25 + 2.4 * t,
@@ -23,146 +44,106 @@ function heat(score) {
   };
 }
 
-// Each effect gets a canvas and a function that returns its layer stack.
-const PRESETS = {
-  // Cursor smoke and rising embers behind the hero.
-  embers: () => ({
+function thermalPreset(canvas) {
+  const h = heat(Number(canvas.dataset.score) || 0);
+  return {
     components: [
-      {
-        type: "SmokeFlow",
-        id: "smoke",
-        props: {
-          colorA: css("--fx-smoke-fresh"),
-          colorB: css("--fx-smoke-aged"),
-          intensity: 0.35,
-          emitRadius: 0.035,
-          momentum: 10,
-          dissipation: 1.8,
-          detail: 14,
-          gravity: -1.2,
-          colorDecay: 1.4,
-        },
-      },
-      {
-        type: "FloatingParticles",
-        id: "embers",
-        props: {
-          particleColor: css("--fx-ember"),
-          count: 140,
-          particleSize: 1,
-          softness: 0.6,
-          speed: 0.12,
-          angle: 90,
-          angleVariance: 25,
-          speedVariance: 0.5,
-          randomness: 0.4,
-          twinkle: 0.8,
-          cursorStrength: 0.35,
-        },
-      },
+      { type: "Heatmap", id: "heat", props: { ...h.heatmap, shape: JSON.stringify({ type: "metaballs3D" }) } },
+      { type: "Glitch", id: "glitch", props: { ...h.glitch, speed: 1.4, rgbShift: 6, scanlineIntensity: 0.25 } },
+      { type: "FilmGrain", props: { strength: 0.18, animated: true } },
     ],
-  }),
+  };
+}
 
-  // Thermal-camera view whose temperature follows a score.
-  thermal: (canvas) => {
-    const h = heat(Number(canvas.dataset.score) || 0);
-    return {
-      components: [
-        {
-          type: "Heatmap",
-          id: "heat",
-          props: { ...h.heatmap, shape: JSON.stringify({ type: "metaballs3D" }) },
-        },
-        { type: "Glitch", id: "glitch", props: { ...h.glitch, speed: 1.4, rgbShift: 6, scanlineIntensity: 0.25 } },
-        { type: "FilmGrain", props: { strength: 0.18, animated: true } },
-      ],
-    };
-  },
+// A rounded rectangle that fills the canvas. The shape field is sized to the short side.
+// Layout size, not the bounding box: the element may be tilted.
+// `bleedPx` pushes the shape's bevel past the canvas edge so only the polished face shows.
+function chromeShape(canvas, radiusPx, bleedPx = 0) {
+  const width = canvas.offsetWidth + 2 * bleedPx;
+  const height = canvas.offsetHeight + 2 * bleedPx;
+  const short = Math.max(1, Math.min(canvas.offsetWidth, canvas.offsetHeight));
+  return JSON.stringify({
+    type: "roundedRectSDF",
+    radius: (0.5 * width) / short - 0.002,
+    height: (0.5 * height) / short - 0.002,
+    rounding: Math.min(0.5, radiusPx / short),
+  });
+}
 
-  // The 404 page: nothing here but smoke.
-  smoke: () => ({
-    components: [
-      {
-        type: "SmokeFlow",
-        props: {
-          colorA: css("--fx-smoke-fresh"),
-          colorB: css("--fx-smoke-aged"),
-          intensity: 0.6,
-          emitRadius: 0.05,
-          dissipation: 1.1,
-          detail: 20,
-          gravity: -1.8,
-          colorDecay: 1,
-        },
-      },
-    ],
-  }),
-};
+function chromeProps(canvas, kind) {
+  const bezel = kind === "bezel";
+  return {
+    tint: css(bezel ? "--chrome-bezel" : "--chrome-tint"),
+    warmColor: css("--chrome-warm"),
+    coolColor: css("--chrome-cool"),
+    shape: chromeShape(canvas, bezel ? 20 : 4, bezel ? 40 : 0),
+    bevelWidth: bezel ? 0.035 : 0.2,
+    bevelShape: 1,
+    curvature: bezel ? 0.9 : 0.08,
+    waviness: 0.06,
+    softness: bezel ? 0.25 : 0.45,
+    spectral: bezel ? 1.2 : 0.6,
+    shadows: bezel ? 0.35 : 0.7,
+    environment: bezel ? 1.15 : 0.8,
+    speed: 0,
+    envRotation: 0,
+  };
+}
+
+async function loadLibrary() {
+  if (!("gpu" in navigator)) return null;
+  try {
+    const lib = await import("./vendor/shaders-4.0.0.js");
+    if (!(await lib.isWebGPUSupported())) return null;
+    const gpu = await lib.createSharedDevice().catch(() => undefined);
+    return { lib, gpu };
+  } catch {
+    return null;
+  }
+}
 
 async function boot() {
-  if (!canvases.length || reduceMotion.matches || !("gpu" in navigator)) return;
+  if (reduceMotion.matches) return;
 
-  let lib;
-  try {
-    lib = await import("./vendor/shaders-4.0.0.js");
-    if (!(await lib.isWebGPUSupported())) return;
-  } catch {
-    return;
+  // Lean works without WebGPU.
+  if (finePointer.matches) {
+    chromeTargets.forEach((element) => {
+      element.classList.add("leans");
+      element.addEventListener("pointermove", (event) => lean(element, event));
+      element.addEventListener("pointerleave", () => settle(element));
+    });
   }
 
-  const gpu = await lib.createSharedDevice().catch(() => undefined);
+  if (!chromeTargets.length && !thermals.length) return;
+  const loaded = await loadLibrary();
+  if (!loaded) return;
+  const { lib, gpu } = loaded;
+  const options = (canvas) => ({
+    disableTelemetry: true,
+    gpu,
+    onReady: () => canvas.classList.add("fx-ready"),
+    onError: () =>
+      setTimeout(() => {
+        const instance = instances.get(canvas);
+        if (!instance || instance.getFailureReason()) canvas.classList.remove("fx-ready");
+      }, 0),
+  });
   const instances = new Map();
 
-  async function mount(canvas) {
-    const preset = PRESETS[canvas.dataset.fx];
-    if (!preset) return;
-    try {
-      const instance = await lib.createShader(canvas, preset(canvas), {
-        disableTelemetry: true,
-        gpu,
-        onReady: () => canvas.classList.add("fx-ready"),
-        // Recoverable GPU resets also land here; hide the canvas only once it has given up.
-        onError: () =>
-          setTimeout(() => {
-            const instance = instances.get(canvas);
-            if (!instance || instance.getFailureReason()) canvas.classList.remove("fx-ready");
-          }, 0),
-      });
-      instances.set(canvas, instance);
-    } catch {
-      canvas.classList.remove("fx-ready");
-    }
-  }
-
-  await Promise.all(canvases.map(mount));
-
-  // The hero backdrop fades out as the hero scrolls away, then stops drawing.
-  const backdrop = canvases.find((c) => c.classList.contains("fx-hero"));
-  const hero = document.querySelector(".hero");
-  if (backdrop && hero) {
-    let paused = false;
-    const onScroll = () => {
-      const instance = instances.get(backdrop);
-      if (!instance) return;
-      const fade = 0.7 * clamp01(1 - window.scrollY / Math.max(1, hero.offsetTop + hero.offsetHeight * 0.6));
-      backdrop.style.setProperty("--fx-hero-opacity", fade.toFixed(3));
-      if (fade === 0 && !paused) {
-        instance.pause();
-        paused = true;
-      } else if (fade > 0 && paused) {
-        instance.resume();
-        paused = false;
+  // ─── Thermal views ──────────────────────────────────
+  await Promise.all(
+    thermals.map(async (canvas) => {
+      try {
+        instances.set(canvas, await lib.createShader(canvas, thermalPreset(canvas), options(canvas)));
+      } catch {
+        /* decorative */
       }
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
-  }
-
-  // Score changes from the simulator or the report viewer heat up the thermal views.
+    }),
+  );
   document.addEventListener("iscooked:score", (event) => {
     const h = heat(event.detail.score);
-    canvases
-      .filter((c) => c.dataset.fx === "thermal" && (!event.detail.target || c.closest(event.detail.target)))
+    thermals
+      .filter((c) => !event.detail.target || c.closest(event.detail.target))
       .forEach((canvas) => {
         canvas.dataset.score = String(event.detail.score);
         const instance = instances.get(canvas);
@@ -172,27 +153,69 @@ async function boot() {
       });
   });
 
-  // Smoke colors follow the light/dark theme.
-  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-    instances.forEach((instance, canvas) => {
-      if (canvas.dataset.fx === "thermal") return;
+  // ─── Chrome on hover ────────────────────────────────
+  // Each target gets its skin on first hover, then pauses while the cursor is away.
+  if (!finePointer.matches) return;
+  chromeTargets.forEach((element) => {
+    const kind = element.classList.contains("chrome-wrap") ? "bezel" : "button";
+    let canvas = null;
+    let instance = null;
+    let mounting = null;
+    let pauseTimer = 0;
+
+    async function mount() {
+      canvas = document.createElement("canvas");
+      canvas.className = `chrome-skin chrome-${kind}`;
+      canvas.setAttribute("aria-hidden", "true");
+      element.prepend(canvas);
       try {
-        instance.update("smoke", { colorA: css("--fx-smoke-fresh"), colorB: css("--fx-smoke-aged") });
-        instance.update("embers", { particleColor: css("--fx-ember") });
+        instance = await lib.createShader(
+          canvas,
+          { components: [{ type: "Chrome", id: "chrome", props: chromeProps(canvas, kind) }] },
+          { ...options(canvas), observeElement: true },
+        );
+        instances.set(canvas, instance);
+        let firstResize = true;
+        new ResizeObserver(() => {
+          if (firstResize) return void (firstResize = false);
+          instance.update("chrome", { shape: chromeShape(canvas, kind === "bezel" ? 20 : 4, kind === "bezel" ? 40 : 0) });
+        }).observe(canvas);
       } catch {
-        /* the 404 smoke has no ids; it keeps its colors */
+        canvas.remove();
+        canvas = null;
       }
+    }
+
+    element.addEventListener("pointerenter", async () => {
+      clearTimeout(pauseTimer);
+      if (!canvas) mounting = mounting || mount();
+      await mounting;
+      instance?.resume();
+      element.classList.add("chromed");
+    });
+    element.addEventListener("pointermove", (event) => {
+      if (!instance) return;
+      const rect = element.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      instance.update("chrome", { envRotation: x * 70 });
+    });
+    element.addEventListener("pointerleave", () => {
+      element.classList.remove("chromed");
+      pauseTimer = setTimeout(() => instance?.pause(), 700);
     });
   });
 
-  reduceMotion.addEventListener("change", () => {
-    if (reduceMotion.matches) {
-      instances.forEach((instance, canvas) => {
-        instance.destroy();
-        canvas.classList.remove("fx-ready");
+  // Chrome follows the light/dark theme.
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    instances.forEach((instance, canvas) => {
+      if (!canvas.classList.contains("chrome-skin")) return;
+      const bezel = canvas.classList.contains("chrome-bezel");
+      instance.update("chrome", {
+        tint: css(bezel ? "--chrome-bezel" : "--chrome-tint"),
+        warmColor: css("--chrome-warm"),
+        coolColor: css("--chrome-cool"),
       });
-      instances.clear();
-    }
+    });
   });
 }
 

@@ -29,13 +29,12 @@
     <link rel="icon" type="image/webp" href="./assets/iscooked-logo-256-v1.webp" />
     <link rel="preload" href="./assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./assets/fonts/martian-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="./assets/theme.css?v=5" />
+    <link rel="stylesheet" href="./assets/theme.css?v=6" />
     <script src="./assets/score.js?v=1" defer></script>
     <script src="./assets/app.js?v=4" defer></script>
-    <script src="./assets/fx.js?v=1" type="module"></script>
+    <script src="./assets/fx.js?v=2" type="module"></script>
   </head>
   <body>
-    <canvas class="fx fx-hero" data-fx="embers" aria-hidden="true"></canvas>
     <a class="skip-link" href="#main">Skip to content</a>
     <header class="site-header">
       <nav class="container nav" aria-label="Main navigation">
@@ -85,6 +84,7 @@
           </div>
         </div>
 
+        <div class="chrome-wrap">
         <figure class="terminal" id="demo" aria-labelledby="demo-caption">
           <div class="terminal-bar">
             <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -94,6 +94,7 @@
           <pre class="terminal-body" tabindex="0" aria-label="Example scanner output"><span class="ln"><span class="t-prompt">~</span> $ <span class="t-cmd">bash iscooked.com</span></span><span class="ln"></span><span class="ln t-banner">                    __            __       __</span><span class="ln t-banner">  _________  ____  / /_____  ____/ /  ____/ /_</span><span class="ln t-banner"> / ___/ __ \/ __ \/ //_/ _ \/ __  /  / ___/ __ \</span><span class="ln t-banner">/ /__/ /_/ / /_/ / ,&lt; /  __/ /_/ /_ (__  ) / / /</span><span class="ln t-banner">\___/\____/\____/_/|_|\___/\__,_/(_)____/_/ /_/</span><span class="ln"></span><span class="ln t-dim">  Am I Cooked? — Local AI Security Scanner v1.2.1</span><span class="ln t-dim">  https://iscooked.com</span><span class="ln"></span><span class="ln t-cyan t-bold">  Scanning your setup...</span><span class="ln"></span><span class="ln t-dim">──────────────────────────────────────────────────────────────</span><span class="ln"></span><span class="ln t-bold">  [01] Network Exposure</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-red">🔥 COOKED</span>  Unidentified service on port 8000 (commonly vLLM) is listening on ALL interfaces</span><span class="ln">  <span class="t-green">✅ SAFE</span>  Unidentified service on port 1234 (commonly LM Studio) is bound to localhost only</span><span class="ln"></span><span class="ln t-bold">  [02] API Authentication</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-yellow">⚠  WARMING UP</span>  Ollama /api/tags on port 11434 accessible without authentication on localhost; other routes were not tested</span><span class="ln"></span><span class="ln t-bold">  [03] Model File Permissions</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-red">🔥 COOKED</span>  Files in /srv/models are world-writable!</span><span class="ln"></span><span class="ln t-bold">  [04] Docker / Container Risks</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-green">✅ SAFE</span>  Container 'open-webui' is running as user 'app'</span><span class="ln">  <span class="t-yellow">⚠  WARMING UP</span>  Container 'open-webui' is using host networking</span><span class="ln"></span><span class="ln t-bold">  [05] GPU Driver Exposure</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-dim">⏭  SKIP</span>  No GPU devices detected</span><span class="ln"></span><span class="ln t-bold">  [06] Telemetry / Phoning Home</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-dim">⏭  SKIP</span>  No supported opt-out evidence found</span><span class="ln"></span><span class="ln t-bold">  [07] Firewall Status</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-green">✅ SAFE</span>  UFW firewall is active</span><span class="ln"></span><span class="ln t-dim">  [08–16] 9 more areas skipped in this example</span><span class="ln"></span><span class="ln t-dim">──────────────────────────────────────────────────────────────</span><span class="ln t-bold">  YOUR COOKED SCORE</span><span class="ln"></span><span class="ln">  <span class="t-heat">28%</span> <span class="t-dim">cooked</span>  [<span class="t-red">▒▒▒▒▒▒▒▒▒▒▒                             </span>]</span><span class="ln"></span><span class="ln t-heat">  SLIGHTLY WARM</span><span class="ln"></span><span class="ln">  <span class="t-red t-bold">2</span> critical  <span class="t-yellow t-bold">2</span> warnings  <span class="t-green t-bold">3</span> passed</span><span class="ln">  <span class="t-cyan">0</span> unknown  <span class="t-dim">11 skipped  (18 results)</span></span><span class="ln"></span><span class="ln t-red">  Fix critical findings first.</span><span class="ln"></span><span class="ln"><span class="t-prompt">~</span> $ <span class="caret"></span></span></pre>
           <figcaption class="terminal-foot">Example data. This page does not scan your device.</figcaption>
         </figure>
+        </div>
       </section>
 
       <div class="container">
