@@ -34,13 +34,13 @@ const PRESETS = {
         props: {
           colorA: css("--fx-smoke-fresh"),
           colorB: css("--fx-smoke-aged"),
-          intensity: 0.9,
-          emitRadius: 0.06,
-          momentum: 18,
-          dissipation: 0.9,
-          detail: 18,
-          gravity: -1.6,
-          colorDecay: 0.9,
+          intensity: 0.35,
+          emitRadius: 0.035,
+          momentum: 10,
+          dissipation: 1.8,
+          detail: 14,
+          gravity: -1.2,
+          colorDecay: 1.4,
         },
       },
       {
@@ -48,10 +48,10 @@ const PRESETS = {
         id: "embers",
         props: {
           particleColor: css("--fx-ember"),
-          count: 380,
-          particleSize: 1.2,
-          softness: 0.55,
-          speed: 0.18,
+          count: 140,
+          particleSize: 1,
+          softness: 0.6,
+          speed: 0.12,
           angle: 90,
           angleVariance: 25,
           speedVariance: 0.5,
@@ -87,12 +87,12 @@ const PRESETS = {
         props: {
           colorA: css("--fx-smoke-fresh"),
           colorB: css("--fx-smoke-aged"),
-          intensity: 1.3,
-          emitRadius: 0.09,
-          dissipation: 0.4,
-          detail: 28,
-          gravity: -2.4,
-          colorDecay: 0.6,
+          intensity: 0.6,
+          emitRadius: 0.05,
+          dissipation: 1.1,
+          detail: 20,
+          gravity: -1.8,
+          colorDecay: 1,
         },
       },
     ],
@@ -144,7 +144,7 @@ async function boot() {
     const onScroll = () => {
       const instance = instances.get(backdrop);
       if (!instance) return;
-      const fade = clamp01(1 - window.scrollY / Math.max(1, hero.offsetTop + hero.offsetHeight * 0.8));
+      const fade = 0.7 * clamp01(1 - window.scrollY / Math.max(1, hero.offsetTop + hero.offsetHeight * 0.6));
       backdrop.style.setProperty("--fx-hero-opacity", fade.toFixed(3));
       if (fade === 0 && !paused) {
         instance.pause();

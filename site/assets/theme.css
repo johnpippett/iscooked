@@ -1293,8 +1293,11 @@ body {
   height: 100%;
 }
 canvas.fx-hero.fx-ready {
-  opacity: var(--fx-hero-opacity, 1);
+  opacity: var(--fx-hero-opacity, 0.7);
   transition: none;
+}
+canvas.fx-page.fx-ready {
+  opacity: 0.6;
 }
 .fx-page {
   position: fixed;
