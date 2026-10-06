@@ -75,6 +75,7 @@ OS_TYPE="${{ISCOOKED_TEST_OS_TYPE:-linux}}"
 def test_network_missing_tools_is_skipped():
     result = source_and_run(
         "check_network_exposure",
+        env_vars={"ISCOOKED_TEST_PROC_NET": "/nonexistent"},
         function_mocks={
             "command_exists": '''
 case "$1" in
@@ -320,7 +321,8 @@ def test_missing_firewall_tools_do_not_prove_inactive_firewall(platform):
     result = source_and_run(
         "check_firewall",
         env_vars={"ISCOOKED_TEST_OS_TYPE": platform},
-        function_mocks={"command_exists": "return 1"},
+        function_mocks={"command_exists": "return 1",
+                        "ai_service_exposure": "echo port 11434; return 0"},
     )
     assert "UNKNOWN" in result.stdout_plain
     assert "No active firewall detected" not in result.stdout_plain
@@ -337,3 +339,45 @@ def test_sensitive_file_limit_is_reported(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "20-file limit" in result.stdout_plain
     assert "No world-readable .env files with API keys found" not in result.stdout_plain
+
+
+PROC_TCP = """  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+   0: 00000000:2CAA 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 1 1 0000000000000000 100 0 0 10 0
+   1: 0100007F:1FFC 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 2 1 0000000000000000 100 0 0 10 0
+   2: 0100007F:2CAA 0100007F:9C40 01 00000000:00000000 00:00000000 00000000     0        0 3 1 0000000000000000 100 0 0 10 0
+"""
+PROC_TCP6 = """  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+   0: 00000000000000000000000001000000:04D2 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 4 1 0000000000000000 100 0 0 10 0
+   1: 00000000000000000000000000000000:1F40 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 5 1 0000000000000000 100 0 0 10 0
+   2: 0000000000000000FFFF00000A00000A:0BB8 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 6 1 0000000000000000 100 0 0 10 0
+"""
+
+
+def test_proc_net_fallback_without_ss_or_netstat(tmp_path):
+    (tmp_path / "tcp").write_text(PROC_TCP)
+    (tmp_path / "tcp6").write_text(PROC_TCP6)
+    result = source_and_run(
+        "proc_net_listen_lines",
+        env_vars={"ISCOOKED_TEST_OS_TYPE": "linux", "ISCOOKED_TEST_PROC_NET": str(tmp_path)},
+    )
+    assert result.returncode == 0, result.stderr_plain
+    assert result.stdout_plain.splitlines() == [
+        "LISTEN 0 0 0.0.0.0:11434 *:*",
+        "LISTEN 0 0 127.0.0.1:8188 *:*",
+        "LISTEN 0 0 [::1]:1234 *:*",
+        "LISTEN 0 0 [::]:8000 *:*",
+        "LISTEN 0 0 [::ffff:10.0.0.10]:3000 *:*",
+    ]
+
+
+def test_network_exposure_uses_proc_net_fallback(tmp_path):
+    (tmp_path / "tcp").write_text(PROC_TCP)
+    result = source_and_run(
+        "check_network_exposure",
+        env_vars={"ISCOOKED_TEST_OS_TYPE": "linux", "ISCOOKED_TEST_PROC_NET": str(tmp_path)},
+        function_mocks={"command_exists": 'case "$1" in ss|netstat) return 1 ;; *) command -v "$1" >/dev/null 2>&1 ;; esac'},
+    )
+    assert result.returncode == 0, result.stderr_plain
+    assert "port 11434 (commonly Ollama) is listening on ALL interfaces" in result.stdout_plain
+    assert "port 8188 (commonly ComfyUI) is bound to localhost only" in result.stdout_plain
+    assert "ss or netstat" not in result.stdout_plain

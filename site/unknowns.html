@@ -62,12 +62,12 @@
                 <ul>
                   <li><strong>Python 3:</strong> structured API, browser, MCP, OpenClaw, and model-code checks.</li>
                   <li><strong>curl:</strong> local HTTP probes.</li>
-                  <li><strong>ss or netstat:</strong> network listeners. The scanner supports the corresponding Linux or macOS output.</li>
+                  <li><strong>ss or netstat:</strong> network listeners. The scanner supports the corresponding Linux or macOS output, and reads <code>/proc/net/tcp</code> on Linux when neither is installed.</li>
                   <li><strong>timeout, gtimeout, or Python 3:</strong> a time limit for Docker metadata commands.</li>
                 </ul>
                 <p>The scanner uses standard system paths, plus <code>/opt/homebrew/bin</code> and <code>/opt/homebrew/sbin</code> on macOS. Shell aliases and tools found only in a virtual environment can be unavailable.</p>
                 <p>If you do not use the product named in a skipped check, installation is not necessary.</p>
-                <p>Missing firewall tools produce <code>UNKNOWN</code>. Missing required system tools stop the scan. Adding an optional tool does not correct an existing command failure.</p>
+                <p>Missing firewall tools produce <code>UNKNOWN</code> when an AI service listens beyond localhost, and <code>SKIP</code> otherwise. Missing required system tools stop the scan. Adding an optional tool does not correct an existing command failure.</p>
               </div>
             </details>
             <div class="guide-note"><strong>Some results need manual review.</strong><p>The scanner cannot read every configuration or infer every active setting. A manual check does not update the scanner report.</p></div>
@@ -77,7 +77,7 @@
             <p class="guide-eyebrow">01 / System access</p>
             <h2 id="firewall-heading">Firewall inspection failed</h2>
             <p class="guide-message">“ruleset inspection failed” · “status inspection failed” · “No supported firewall inspection tool”</p>
-            <p>Firewall status commands can require administrator access. The scanner reports a failed command as unknown.</p>
+            <p>Firewall status commands can require administrator access. When a command fails and an AI service listens beyond localhost, the scanner reports unknown. When nothing is exposed, it reports a skip that does not affect the score.</p>
             <p>Run only the status command for your existing firewall. These commands read status or rules; they do not change them.</p>
             <p>First run the command without <code>sudo</code> to reproduce the scanner's access. For a permission error, an administrator can repeat that status command with <code>sudo</code>.</p>
             <details class="guide-detail">

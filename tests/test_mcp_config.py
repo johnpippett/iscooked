@@ -128,3 +128,10 @@ def test_sensitive_descendant_and_duplicate_grants(tmp_path):
     out = run_check(tmp_path, {'mcpServers': {'a': {'command': 'mcp-server-filesystem', 'args': [grant, grant]}}})
     assert 'sensitive directory' in out
     assert 'SCORE=4' in out
+
+
+def test_config_without_servers_passes(tmp_path):
+    out = run_check(tmp_path, {'projects': {'a': {'allowedTools': []}}}, filename='.claude.json')
+    assert 'no MCP servers configured' in out
+    assert 'UNKNOWN' not in out
+    assert 'SCORE=0' in out

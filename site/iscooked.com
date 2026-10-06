@@ -259,6 +259,54 @@ get_file_owner() {
     fi
 }
 
+# Linux fallback when ss and netstat are absent (minimal images, containers):
+# read the kernel socket tables directly and print ss-style LISTEN lines so the
+# existing host:port parsing applies. Process names are not available here.
+proc_net_listen_lines() {
+    local proc_net="${ISCOOKED_TEST_PROC_NET:-/proc/net}"
+    [[ "$OS_TYPE" == "linux" && -r "$proc_net/tcp" ]] || return 1
+    local tables=("$proc_net/tcp")
+    [[ -r "$proc_net/tcp6" ]] && tables+=("$proc_net/tcp6")
+    awk '
+        function hex(s,    i, n) {
+            n = 0
+            for (i = 1; i <= length(s); i++) n = n * 16 + index("0123456789abcdef", substr(tolower(s), i, 1)) - 1
+            return n
+        }
+        # Kernel addresses are 32-bit words in host (little-endian) byte order.
+        function word_bytes(w) {
+            return hex(substr(w, 7, 2)) "." hex(substr(w, 5, 2)) "." hex(substr(w, 3, 2)) "." hex(substr(w, 1, 2))
+        }
+        function v6(a,    i, b, g, out, parts) {
+            b = ""
+            for (i = 0; i < 4; i++) {
+                w = substr(a, i * 8 + 1, 8)
+                b = b substr(w, 7, 2) substr(w, 5, 2) substr(w, 3, 2) substr(w, 1, 2)
+            }
+            b = tolower(b)
+            if (b == "00000000000000000000000000000000") return "::"
+            if (b == "00000000000000000000000000000001") return "::1"
+            if (substr(b, 1, 24) == "00000000000000000000ffff") return "::ffff:" word_bytes(substr(a, 25, 8))
+            out = ""
+            for (i = 0; i < 8; i++) {
+                g = substr(b, i * 4 + 1, 4)
+                sub(/^0+/, "", g)
+                out = out (i ? ":" : "") (g == "" ? "0" : g)
+            }
+            return out
+        }
+        FNR == 1 { next }
+        $4 != "0A" { next }
+        {
+            split($2, local_addr, ":")
+            port = hex(local_addr[2])
+            if (length(local_addr[1]) == 8) host = word_bytes(local_addr[1])
+            else host = "[" v6(local_addr[1]) "]"
+            print "LISTEN 0 0 " host ":" port " *:*"
+        }
+    ' "${tables[@]}" 2>/dev/null
+}
+
 # Portable listening socket check: returns matching lines for a port
 get_listen_line() {
     local port="$1"
@@ -290,6 +338,10 @@ get_listen_line() {
 
     if [[ "$attempted" == "true" ]]; then
         return 2
+    fi
+    if socket_output=$(proc_net_listen_lines); then
+        printf '%s\n' "$socket_output" | grep -E "[:\.]${port}([[:space:]]|$)" || true
+        return 0
     fi
     return 1
 }
@@ -398,13 +450,7 @@ is_numeric_ip_host() {
     fi
 }
 
-# ─── Checks ─────────────────────────────────────────────────────────────────────
-
-check_network_exposure() {
-    section "01" "Network Exposure"
-
-    local ai_ports=""
-    ai_ports="11434:Ollama
+AI_SERVICE_PORTS="11434:Ollama
 8080:LM Studio / text-gen-webui
 5000:text-gen-webui (alt)
 7860:Gradio / Stable Diffusion WebUI
@@ -414,6 +460,35 @@ check_network_exposure() {
 8000:vLLM / FastChat
 5001:LocalAI
 9090:Prometheus (AI metrics)"
+
+# Print the first common AI service port listening beyond loopback.
+# Returns 0 when one is exposed, 1 when none is, 2 when listeners can't be read.
+ai_service_exposure() {
+    local entry port name listen_line host
+    while IFS= read -r entry; do
+        port="${entry%%:*}"
+        name="${entry#*:}"
+        listen_line=$(get_listen_line "$port") || return 2
+        [[ -n "$listen_line" ]] || continue
+        if ! is_bound_loopback_only "$listen_line" "$port"; then
+            if is_bound_all_interfaces "$listen_line" "$port"; then
+                host="all interfaces"
+            else
+                host=$(get_non_loopback_listen_host "$listen_line" "$port" || echo "a network interface")
+            fi
+            printf 'port %s (commonly %s) listens on %s\n' "$port" "$name" "$host"
+            return 0
+        fi
+    done <<< "$AI_SERVICE_PORTS"
+    return 1
+}
+
+# ─── Checks ─────────────────────────────────────────────────────────────────────
+
+check_network_exposure() {
+    section "01" "Network Exposure"
+
+    local ai_ports="$AI_SERVICE_PORTS"
 
     local found_any=false
     local listener_query_failed=false
@@ -494,6 +569,7 @@ check_api_auth() {
     local port expected route lines line host target url response status body
     local identity metadata exposed seen count ordered loopbacks
     local listener_inventory_reported=false
+    local results_before=$TOTAL_CHECKS
     for port in 11434 1234 8000; do
         case "$port" in
             11434) expected="Ollama"; route="/api/tags" ;;
@@ -603,6 +679,10 @@ check_api_auth() {
             esac
         done <<< "$lines"
     done
+
+    if [[ "$TOTAL_CHECKS" -eq "$results_before" ]]; then
+        result_skip "No Ollama, LM Studio, or vLLM API is running on its default port; nothing to test"
+    fi
 }
 
 check_model_permissions() {
@@ -944,6 +1024,32 @@ if listeners is None:
     kind = 'netstat'
     argv = ['netstat', '-an', '-ptcp'] if sys.argv[1] == 'macos' else ['netstat', '-tlnp']
     listeners = read_command(argv)
+if listeners is None and sys.argv[1] == 'linux':
+    # Same kernel-table fallback as proc_net_listen_lines, in ss format.
+    kind = 'ss'
+    rows = []
+    proc_net = os.environ.get('ISCOOKED_TEST_PROC_NET', '/proc/net')
+    for table in ('tcp', 'tcp6'):
+        try:
+            with open(os.path.join(proc_net, table)) as f:
+                lines = f.read().splitlines()[1:]
+        except OSError:
+            continue
+        for row in lines:
+            fields = row.split()
+            if len(fields) < 4 or fields[3] != '0A':
+                continue
+            try:
+                addr, port = fields[1].split(':')
+                raw = bytes.fromhex(addr)
+                # Each 32-bit word is stored in host (little-endian) byte order.
+                packed = b''.join(raw[i:i + 4][::-1] for i in range(0, len(raw), 4))
+                ip = ipaddress.ip_address(packed)
+                rows.append('LISTEN 0 0 [%s]:%d *:*' % (ip, int(port, 16)))
+            except ValueError:
+                continue
+    if rows or os.path.exists(os.path.join(proc_net, 'tcp')):
+        listeners = '\n'.join(rows)
 if listeners is None:
     print('unknown|Browser debugging candidate found; listener inspection unavailable')
     sys.exit()
@@ -1155,7 +1261,10 @@ paths = [
     (cwd / '.cursor/mcp.json', 'Cursor project'),
 ]
 
+EMITTED = [0]
+
 def emit(level, message):
+    EMITTED[0] += 1
     print(level + '\t' + message)
 
 def traversable(parents, gid=None):
@@ -1306,6 +1415,7 @@ for path, label in paths:
     except (OSError, ValueError, RecursionError):
         emit('unknown', label + ': unreadable, malformed, or oversized JSON configuration')
         continue
+    emitted_before = EMITTED[0]
     groups = []
     if 'mcpServers' in data:
         groups.append(data['mcpServers'])
@@ -1316,21 +1426,25 @@ for path, label in paths:
         for project in projects[:128]:
             if isinstance(project, dict) and 'mcpServers' in project:
                 groups.append(project['mcpServers'])
+    if not groups and 'servers' in data:
+        emit('unknown', label + ': uses a "servers" format this scanner does not evaluate yet')
     servers = []
     for group in groups:
         if isinstance(group, dict):
             servers.extend(group.values())
         else:
             emit('unknown', label + ': unsupported mcpServers structure')
-    if not groups:
-        emit('unknown', label + ': no supported mcpServers structure; unsupported formats are not evaluated')
     credentials = any(has_credentials(s) for s in servers if isinstance(s, dict))
     permissions(path, label, credentials)
     if len(servers) > 128:
         emit('unknown', label + ': server limit exceeded; inspection incomplete')
     for i, server in enumerate(servers[:128], 1):
         inspect_server(server, label + ' server ' + str(i))
-    emit('skip', label + ': inspection limited to known JSON schemas, literal grants and Unix mode permissions; other clients and runtime restrictions are not evaluated')
+    if EMITTED[0] == emitted_before:
+        if servers:
+            emit('safe', label + ': ' + str(len(servers)) + ' MCP server(s) reviewed; no risky settings found')
+        else:
+            emit('safe', label + ': no MCP servers configured')
 if not found:
     emit('skip', 'No supported MCP configuration found; unsupported clients and formats are not evaluated')
 MCP_PY
@@ -1635,17 +1749,18 @@ stats.lmstudio.ai"
 check_firewall() {
     section "07" "Firewall Status"
 
+    # A missing host firewall matters most when an AI service is reachable
+    # beyond localhost. Backend states are gathered first, then reported as one
+    # result whose severity follows that exposure.
     local has_firewall=false
-    local inspection_incomplete=false
+    local inactive=() failed=()
 
     if [[ "$OS_TYPE" == macos ]]; then
         if ! command_exists /usr/libexec/ApplicationFirewall/socketfilterfw && ! command_exists pfctl; then
-            result_unknown "No supported firewall inspection tool is available; firewall state is unknown"
-            return
+            failed+=("no supported firewall inspection tool is available")
         fi
     elif ! command_exists ufw && ! command_exists firewall-cmd && ! command_exists iptables && ! command_exists nft; then
-        result_unknown "No supported firewall inspection tool is available; firewall state is unknown"
-        return
+        failed+=("no supported firewall inspection tool is available")
     fi
 
     if [[ "$OS_TYPE" == "macos" ]]; then
@@ -1653,16 +1768,14 @@ check_firewall() {
         if command_exists /usr/libexec/ApplicationFirewall/socketfilterfw; then
             local fw_status
             if ! fw_status=$(/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null); then
-                result_unknown "macOS Application Firewall status inspection failed — firewall state UNKNOWN"
-                inspection_incomplete=true
+                failed+=("macOS Application Firewall status inspection failed")
             elif echo "$fw_status" | grep -qi "enabled"; then
                 result_safe "macOS Application Firewall is enabled"
                 has_firewall=true
             elif echo "$fw_status" | grep -qi "disabled"; then
-                result_cooked "macOS Application Firewall is DISABLED"
+                inactive+=("macOS Application Firewall is DISABLED")
             else
-                result_unknown "macOS Application Firewall returned an unrecognized status — firewall state UNKNOWN"
-                inspection_incomplete=true
+                failed+=("macOS Application Firewall returned an unrecognized status")
             fi
         fi
 
@@ -1670,14 +1783,14 @@ check_firewall() {
         if command_exists pfctl; then
             local pf_status
             if ! pf_status=$(pfctl -s info 2>/dev/null); then
-                result_unknown "macOS pf status inspection failed — firewall state UNKNOWN"
-                inspection_incomplete=true
+                failed+=("macOS pf status inspection failed")
             elif echo "$pf_status" | grep -Eqi "^Status:[[:space:]]+Enabled([[:space:]]|$)"; then
                 result_safe "macOS pf (packet filter) is enabled"
                 has_firewall=true
-            elif ! echo "$pf_status" | grep -Eqi "^Status:[[:space:]]+Disabled([[:space:]]|$)"; then
-                result_unknown "macOS pf returned an unrecognized status — firewall state UNKNOWN"
-                inspection_incomplete=true
+            elif echo "$pf_status" | grep -Eqi "^Status:[[:space:]]+Disabled([[:space:]]|$)"; then
+                inactive+=("macOS pf is disabled")
+            else
+                failed+=("macOS pf returned an unrecognized status")
             fi
         fi
     else
@@ -1685,16 +1798,14 @@ check_firewall() {
         if command_exists ufw; then
             local ufw_status
             if ! ufw_status=$(ufw status 2>/dev/null); then
-                result_unknown "UFW status inspection failed — firewall state UNKNOWN"
-                inspection_incomplete=true
+                failed+=("UFW status inspection failed")
             elif echo "$ufw_status" | grep -Eqi "^Status:[[:space:]]+active$"; then
                 result_safe "UFW firewall is active"
                 has_firewall=true
             elif echo "$ufw_status" | grep -Eqi "^Status:[[:space:]]+inactive$"; then
-                result_cooked "UFW is installed but INACTIVE"
+                inactive+=("UFW is installed but INACTIVE")
             else
-                result_unknown "UFW returned an unrecognized status — firewall state UNKNOWN"
-                inspection_incomplete=true
+                failed+=("UFW returned an unrecognized status")
             fi
         fi
 
@@ -1706,10 +1817,9 @@ check_firewall() {
             else
                 local firewalld_rc=$?
                 if [[ "$firewalld_rc" -eq 252 ]]; then
-                    result_cooked "firewalld is installed but INACTIVE"
+                    inactive+=("firewalld is installed but INACTIVE")
                 else
-                    result_unknown "firewalld status inspection failed (exit ${firewalld_rc}) — firewall state UNKNOWN"
-                    inspection_incomplete=true
+                    failed+=("firewalld status inspection failed (exit ${firewalld_rc})")
                 fi
             fi
         fi
@@ -1723,12 +1833,11 @@ check_firewall() {
                 if [[ "$rule_count" -gt 2 ]]; then
                     result_safe "iptables has ${rule_count} rules configured"
                     has_firewall=true
-                elif [[ "$has_firewall" == "false" ]]; then
-                    result_warming "iptables has minimal/no rules"
+                else
+                    inactive+=("iptables has minimal/no rules")
                 fi
             else
-                result_unknown "iptables ruleset inspection failed — firewall state UNKNOWN"
-                inspection_incomplete=true
+                failed+=("iptables ruleset inspection failed")
             fi
         fi
 
@@ -1745,16 +1854,38 @@ check_firewall() {
                 if [[ "$nft_rules" -gt 5 ]]; then
                     result_safe "nftables has rules configured"
                     has_firewall=true
+                else
+                    inactive+=("nftables has minimal/no rules")
                 fi
             else
-                result_unknown "nftables ruleset inspection failed — firewall state UNKNOWN"
-                inspection_incomplete=true
+                failed+=("nftables ruleset inspection failed")
             fi
         fi
     fi
 
-    if [[ "$has_firewall" == "false" && "$inspection_incomplete" == "false" ]]; then
-        result_cooked "No active firewall detected!"
+    # An active firewall settles it; other backends' states don't change that.
+    [[ "$has_firewall" == "true" ]] && return
+
+    local details="" item
+    for item in ${inactive[@]+"${inactive[@]}"} ${failed[@]+"${failed[@]}"}; do
+        details="${details:+${details}; }${item}"
+    done
+
+    local exposure exposure_rc=0
+    exposure=$(ai_service_exposure) || exposure_rc=$?
+
+    if [[ "${#failed[@]}" -gt 0 ]]; then
+        if [[ "$exposure_rc" -eq 1 ]]; then
+            result_skip "Firewall state could not be fully read (${details}); no AI service listens beyond localhost, so this does not affect your score. Re-run with sudo to check."
+        else
+            result_unknown "Firewall state UNKNOWN (${details}). Re-run with sudo to check."
+        fi
+    elif [[ "$exposure_rc" -eq 0 ]]; then
+        result_cooked "No active firewall detected! ${exposure^} with nothing filtering it (${details})"
+    elif [[ "$exposure_rc" -eq 1 ]]; then
+        result_warming "No active firewall detected (${details}). No AI service listens beyond localhost, so this is defense in depth rather than an open door."
+    else
+        result_warming "No active firewall detected (${details}). Listening services could not be checked."
     fi
 }
 
@@ -1976,8 +2107,10 @@ check_history_logs() {
 $HOME/.zsh_history
 $HOME/.local/share/fish/fish_history"
 
+    local inspected_any=false
     while IFS= read -r hist_file; do
         if [[ -f "$hist_file" ]]; then
+            inspected_any=true
             local key_leaks=""
             local history_grep_failed=false
             if key_leaks=$(grep -ciE '(sk-[a-zA-Z0-9]{20,}|api_key=|OPENAI_API_KEY|ANTHROPIC_API_KEY|HF_TOKEN)' "$hist_file" 2>/dev/null); then
@@ -2026,6 +2159,7 @@ $HOME/Library/Logs/LM Studio"
 
     while IFS= read -r log_dir; do
         if [[ -d "$log_dir" ]]; then
+            inspected_any=true
             local log_perms
             if ! log_perms=$(get_file_perms "$log_dir"); then
                 result_unknown "Permission inspection failed for ${log_dir}"
@@ -2038,6 +2172,10 @@ $HOME/Library/Logs/LM Studio"
             fi
         fi
     done <<< "$log_dirs_list"
+
+    if [[ "$inspected_any" == "false" ]]; then
+        result_skip "No shell history or AI log files found; nothing to inspect"
+    fi
 }
 
 # ─── Check 16: Remote Model Code ──────────────────────────────────────────────

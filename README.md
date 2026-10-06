@@ -91,7 +91,7 @@ The scanner has 16 check areas:
 | 04 | Docker / Container Risks | Root users, privileged mode, host networking, daemon sockets, and host-root mounts. |
 | 05 | GPU Driver Exposure | GPU device permissions and known management listeners. |
 | 06 | Telemetry / Phoning Home | Scanner opt-out values and exact known entries in `/etc/hosts`. |
-| 07 | Firewall Status | Recognized Linux and macOS firewall backends and their reported state. |
+| 07 | Firewall Status | Recognized Linux and macOS firewall backends. A missing firewall is critical only when an AI service listens beyond localhost; otherwise it is a warning. |
 | 08 | SSL/TLS Configuration | Plain HTTP on non-loopback AI service listeners. |
 | 09 | AI Process Enumeration | Candidate AI processes and the account that runs each process. |
 | 10 | Sensitive File Exposure | World-readable `.env` files that contain common API key names. |
@@ -116,7 +116,7 @@ Unknown results add four points. Skipped results add no points. Both results lim
 | Shell | Bash 4 or later. Some macOS installations provide Bash 3.2. |
 | Required commands | `awk`, `basename`, `cat`, `find`, `grep`, `ps`, `stat`, `tr`, `uname`, `wc`, and `whoami`. |
 | Home directory | `HOME` must name an existing absolute directory. |
-| Socket evidence | `ss` or `netstat`. Missing tools produce skipped results. Failed inspection produces unknown results. |
+| Socket evidence | `ss` or `netstat`. Linux falls back to `/proc/net/tcp` when both are missing. Failed inspection produces unknown results. |
 | Optional checks | Python 3 enables JSON and structured API, browser, MCP, agent-gateway, and model-code checks. `curl`, `docker`, and `nvidia-smi` enable related probes. |
 | Docker timeout | Docker metadata calls use `timeout`, `gtimeout`, or Python 3 for a five-second limit. |
 
