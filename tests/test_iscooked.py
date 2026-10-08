@@ -729,6 +729,11 @@ exit 0
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+# Firewall severity follows AI service exposure; pin it so host sockets don't matter.
+EXPOSED = {"ai_service_exposure": 'echo "port 11434 (commonly Ollama) listens on all interfaces"; return 0'}
+NOT_EXPOSED = {"ai_service_exposure": "return 1"}
+
+
 def linux_firewall_mocks(**overrides):
     """Provide deterministic installed-but-inactive Linux firewall backends."""
     mocks = {
@@ -753,6 +758,7 @@ echo "Status: inactive"
 '''
         result = source_and_run(
             "check_firewall",
+            function_mocks=EXPOSED,
             mocks=linux_firewall_mocks(ufw=mock_ufw),
             extra_path="/usr/bin:/bin",
         )
@@ -766,6 +772,7 @@ echo "Status: active"
 '''
         result = source_and_run(
             "check_firewall",
+            function_mocks=EXPOSED,
             mocks=linux_firewall_mocks(ufw=mock_ufw),
             extra_path="/usr/bin:/bin",
         )
@@ -785,6 +792,7 @@ echo "target     prot opt source               destination"
 '''
         result = source_and_run(
             "check_firewall",
+            function_mocks=EXPOSED,
             mocks=linux_firewall_mocks(iptables=mock_iptables),
             extra_path="/usr/bin:/bin",
         )
@@ -801,6 +809,7 @@ exit 1
 '''
         result = source_and_run(
             "check_firewall",
+            function_mocks=EXPOSED,
             mocks=linux_firewall_mocks(iptables=mock_iptables),
             extra_path="/usr/bin:/bin",
         )
@@ -818,6 +827,7 @@ exit 1
 '''
         result = source_and_run(
             "check_firewall",
+            function_mocks=EXPOSED,
             mocks=linux_firewall_mocks(nft=mock_nft),
             extra_path="/usr/bin:/bin",
         )
@@ -834,6 +844,7 @@ exit 1
 '''
         result = source_and_run(
             "check_firewall",
+            function_mocks=EXPOSED,
             mocks=linux_firewall_mocks(ufw=mock_ufw),
             extra_path="/usr/bin:/bin",
         )
@@ -847,6 +858,7 @@ exit 1
     def test_ufw_unrecognized_successful_output_is_unknown(self):
         result = source_and_run(
             "check_firewall",
+            function_mocks=EXPOSED,
             mocks=linux_firewall_mocks(ufw='echo "Status: mystery"'),
             extra_path="/usr/bin:/bin",
         )
@@ -860,6 +872,7 @@ exit 1
     def test_firewalld_non_inactive_failure_is_unknown(self, exit_code):
         result = source_and_run(
             "check_firewall",
+            function_mocks=EXPOSED,
             mocks=linux_firewall_mocks(**{"firewall-cmd": f"exit {exit_code}"}),
             extra_path="/usr/bin:/bin",
         )
@@ -873,6 +886,7 @@ exit 1
     def test_firewalld_zero_exit_is_active(self):
         result = source_and_run(
             "check_firewall",
+            function_mocks=EXPOSED,
             mocks=linux_firewall_mocks(**{"firewall-cmd": 'echo "running"'}),
             extra_path="/usr/bin:/bin",
         )
@@ -884,6 +898,7 @@ exit 1
     def test_firewalld_not_running_exit_is_inactive(self):
         result = source_and_run(
             "check_firewall",
+            function_mocks=EXPOSED,
             mocks=linux_firewall_mocks(**{"firewall-cmd": "exit 252"}),
             extra_path="/usr/bin:/bin",
         )
@@ -892,9 +907,10 @@ exit 1
         assert "firewalld is installed but INACTIVE" in result.stdout_plain
         assert "firewalld status inspection failed" not in result.stdout_plain
 
-    def test_failed_backend_is_unknown_even_when_ufw_is_active(self):
+    def test_failed_backend_is_ignored_when_ufw_is_active(self):
         result = source_and_run(
             "check_firewall",
+            function_mocks=EXPOSED,
             mocks=linux_firewall_mocks(
                 ufw='echo "Status: active"',
                 nft='echo "nft: Operation not permitted" >&2\nexit 1',
@@ -904,9 +920,49 @@ exit 1
 
         assert result.returncode == 0, result.stderr_plain
         assert "UFW firewall is active" in result.stdout_plain
-        assert "nftables ruleset inspection failed" in result.stdout_plain
-        assert "UNKNOWN" in result.stdout_plain
-        assert "No active firewall detected!" not in result.stdout_plain
+        assert "nftables ruleset inspection failed" not in result.stdout_plain
+        assert "UNKNOWN" not in result.stdout_plain
+        assert "No active firewall detected" not in result.stdout_plain
+
+    def test_inactive_firewall_without_exposure_is_warning(self):
+        result = source_and_run(
+            "check_firewall",
+            function_mocks=NOT_EXPOSED,
+            mocks=linux_firewall_mocks(),
+            extra_path="/usr/bin:/bin",
+        )
+
+        assert result.returncode == 0, result.stderr_plain
+        assert "WARMING UP" in result.stdout_plain
+        assert "COOKED" not in result.stdout_plain
+        assert "UFW is installed but INACTIVE" in result.stdout_plain
+        assert "defense in depth" in result.stdout_plain
+
+    def test_inactive_firewall_with_exposure_is_critical(self):
+        result = source_and_run(
+            "check_firewall",
+            function_mocks=EXPOSED,
+            mocks=linux_firewall_mocks(),
+            extra_path="/usr/bin:/bin",
+        )
+
+        assert result.returncode == 0, result.stderr_plain
+        assert "COOKED" in result.stdout_plain
+        assert "Port 11434 (commonly Ollama) listens on all interfaces" in result.stdout_plain
+        assert result.stdout_plain.count("COOKED") == 1
+
+    def test_unreadable_firewall_without_exposure_is_skipped(self):
+        result = source_and_run(
+            "check_firewall",
+            function_mocks=NOT_EXPOSED,
+            mocks=linux_firewall_mocks(ufw="exit 1"),
+            extra_path="/usr/bin:/bin",
+        )
+
+        assert result.returncode == 0, result.stderr_plain
+        assert "SKIP" in result.stdout_plain
+        assert "UNKNOWN" not in result.stdout_plain
+        assert "Re-run with sudo" in result.stdout_plain
 
     def test_macos_application_firewall_failure_is_unknown(self):
         result = source_and_run(
@@ -914,6 +970,7 @@ exit 1
             mocks={"pfctl": 'echo "Status: Disabled"'},
             env_vars={"ISCOOKED_TEST_OS_TYPE": "macos"},
             function_mocks={
+                **EXPOSED,
                 "/usr/libexec/ApplicationFirewall/socketfilterfw": "return 1"
             },
             extra_path="/usr/bin:/bin",
@@ -940,6 +997,7 @@ exit 1
             mocks={"pfctl": 'echo "Status: Disabled"'},
             env_vars={"ISCOOKED_TEST_OS_TYPE": "macos"},
             function_mocks={
+                **EXPOSED,
                 "/usr/libexec/ApplicationFirewall/socketfilterfw": (
                     f'echo "{socket_status}"'
                 )
@@ -957,6 +1015,7 @@ exit 1
             mocks={"pfctl": 'echo "Status: Disabled"'},
             env_vars={"ISCOOKED_TEST_OS_TYPE": "macos"},
             function_mocks={
+                **EXPOSED,
                 "/usr/libexec/ApplicationFirewall/socketfilterfw": (
                     'echo "Firewall state unavailable"'
                 )
@@ -975,6 +1034,7 @@ exit 1
             mocks={"pfctl": "exit 1"},
             env_vars={"ISCOOKED_TEST_OS_TYPE": "macos"},
             function_mocks={
+                **EXPOSED,
                 "/usr/libexec/ApplicationFirewall/socketfilterfw": (
                     'echo "Firewall is disabled. (State = 0)"'
                 )
@@ -1006,6 +1066,7 @@ exit 1
             mocks={"pfctl": f'echo "{pf_status}"'},
             env_vars={"ISCOOKED_TEST_OS_TYPE": "macos"},
             function_mocks={
+                **EXPOSED,
                 "/usr/libexec/ApplicationFirewall/socketfilterfw": (
                     'echo "Firewall is disabled. (State = 0)"'
                 )
@@ -1023,6 +1084,7 @@ exit 1
             mocks={"pfctl": 'echo "Status: Mystery"'},
             env_vars={"ISCOOKED_TEST_OS_TYPE": "macos"},
             function_mocks={
+                **EXPOSED,
                 "/usr/libexec/ApplicationFirewall/socketfilterfw": (
                     'echo "Firewall is disabled. (State = 0)"'
                 )
