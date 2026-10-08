@@ -58,6 +58,7 @@ Scanner environment values do not establish the settings of a running service.
 
 - [Homepage](https://iscooked.com/): Static overview, checks, and example output.
 - [Unknown results](https://iscooked.com/unknowns): Diagnostic steps and limits for incomplete checks.
+- [Report viewer](https://iscooked.com/report): Opens a `--json` report in the browser. The page blocks network requests; nothing is uploaded.
 - [Bash source](https://iscooked.com/iscooked.com): The scanner, not an HTML page.
 - [Repository and README](https://github.com/johnpippett/iscooked): Requirements,
   usage, scoring, and source code.

@@ -1,105 +1,52 @@
 (() => {
   "use strict";
 
-  const filters = [...document.querySelectorAll("[data-filter]")];
-  const findings = [...document.querySelectorAll("[data-severity]")];
-  const expandButton = document.querySelector("#show-findings");
-  const findingCount = document.querySelector("#finding-count");
-  let activeFilter = "all";
-  let expanded = false;
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  function updateFindings() {
-    const matching = findings.filter(
-      (row) => activeFilter === "all" || row.dataset.severity === activeFilter,
-    );
-    const shown =
-      activeFilter === "all" && !expanded ? matching.slice(0, 4) : matching;
-    findings.forEach((row) => {
-      row.hidden = !shown.includes(row);
-    });
-    filters.forEach((button) =>
-      button.setAttribute(
-        "aria-pressed",
-        String(button.dataset.filter === activeFilter),
-      ),
-    );
-    findingCount.textContent = `${shown.length} of ${matching.length} example findings`;
-    expandButton.hidden = activeFilter !== "all";
-    expandButton.setAttribute("aria-expanded", String(expanded));
-    document.querySelector("#show-findings-label").textContent = expanded
-      ? "Show fewer"
-      : "Show all 7";
-    document.querySelector("#show-findings-icon").textContent = expanded
-      ? "↑"
-      : "↗";
-  }
-
-  filters.forEach((button) =>
-    button.addEventListener("click", () => {
-      activeFilter = button.dataset.filter;
-      updateFindings();
-    }),
-  );
-  expandButton.addEventListener("click", () => {
-    expanded = !expanded;
-    updateFindings();
-  });
-
+  // ─── Toggle groups ────────────────────────────────────
   function selectPanel(buttons, panels, buttonKey, panelKey, selected) {
     buttons.forEach((button) =>
-      button.setAttribute(
-        "aria-pressed",
-        String(button.dataset[buttonKey] === selected),
-      ),
+      button.setAttribute("aria-pressed", String(button.dataset[buttonKey] === selected)),
     );
     panels.forEach((panel) => {
       panel.hidden = panel.dataset[panelKey] !== selected;
     });
   }
 
-  const categories = [...document.querySelectorAll("[data-category]")];
-  const coveragePanels = [...document.querySelectorAll("[data-panel]")];
+  const categories = $$("[data-category]");
+  const coveragePanels = $$("[data-panel]");
   categories.forEach((button) =>
-    button.addEventListener("click", () => {
-      selectPanel(
-        categories,
-        coveragePanels,
-        "category",
-        "panel",
-        button.dataset.category,
-      );
-    }),
+    button.addEventListener("click", () =>
+      selectPanel(categories, coveragePanels, "category", "panel", button.dataset.category),
+    ),
   );
 
-  const methods = [...document.querySelectorAll("[data-install]")];
-  const methodPanels = [...document.querySelectorAll("[data-method]")];
+  const methods = $$("[data-install]");
+  const methodPanels = $$("[data-method]");
   methods.forEach((button) =>
     button.addEventListener("click", () => {
-      selectPanel(
-        methods,
-        methodPanels,
-        "install",
-        "method",
-        button.dataset.install,
-      );
-      document.querySelector("#copy-status").textContent = "";
+      selectPanel(methods, methodPanels, "install", "method", button.dataset.install);
+      const status = $("#copy-status");
+      if (status) status.textContent = "";
     }),
   );
 
-  const copyStatus = document.querySelector("#copy-status");
-  document.querySelectorAll("[data-copy]").forEach((button) => {
+  // ─── Copy buttons ─────────────────────────────────────
+  $$("[data-copy]").forEach((button) => {
     const copyLabel = button.getAttribute("aria-label");
+    const status = document.getElementById(button.dataset.status || "copy-status");
     let resetTimer;
     button.addEventListener("click", async () => {
       const command = document.getElementById(button.dataset.copy);
       clearTimeout(resetTimer);
-      button.disabled = true;
-      copyStatus.textContent = "";
+      if (status) status.textContent = "";
       try {
         await navigator.clipboard.writeText(command.textContent);
         button.textContent = "Copied";
         button.setAttribute("aria-label", `${copyLabel}: copied`);
-        copyStatus.textContent = "Command copied. Paste it into your terminal.";
+        if (status) status.textContent = "Copied. Paste it into your terminal.";
       } catch {
         const selection = window.getSelection();
         if (selection) {
@@ -108,12 +55,8 @@
           selection.removeAllRanges();
           selection.addRange(range);
         }
-        button.textContent = "Copy";
-        button.setAttribute("aria-label", copyLabel);
-        copyStatus.textContent =
-          "Automatic copy is unavailable. Select and copy the command above.";
+        if (status) status.textContent = "Automatic copy is unavailable. The command is selected; copy it with your keyboard.";
       } finally {
-        button.disabled = false;
         resetTimer = setTimeout(() => {
           button.textContent = "Copy";
           button.setAttribute("aria-label", copyLabel);
@@ -122,11 +65,227 @@
     });
   });
 
-  document.querySelectorAll(".enhancement").forEach((element) => {
+  // ─── Terminal replay ──────────────────────────────────
+  const terminal = $(".terminal");
+  const termBody = terminal && $(".terminal-body", terminal);
+  const replayButton = terminal && $(".terminal-replay", terminal);
+  let playToken = 0;
+
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  function delayFor(line) {
+    const text = line.textContent;
+    if (!text.trim()) return 40;
+    if (line.classList.contains("t-banner")) return 55;
+    if (/^\s+\[\d/.test(text)) return 120;
+    if (/COOKED|WARMING|SAFE|SKIP|UNKNOWN/.test(text)) return 260;
+    if (/^\s+─/.test(text)) return 25;
+    return 80;
+  }
+
+  async function play() {
+    const token = ++playToken;
+    const lines = $$(".ln", termBody);
+    const cmd = $(".t-cmd", termBody);
+    const scoreValue = $(".t-heat", lines.find((l) => l.textContent.includes("% cooked")));
+    const barSpan = scoreValue && scoreValue.parentElement.querySelector(".t-red");
+    const fullCmd = cmd.dataset.full || (cmd.dataset.full = cmd.textContent);
+    const fullBar = barSpan && (barSpan.dataset.full || (barSpan.dataset.full = barSpan.textContent));
+    const fullScore = scoreValue && (scoreValue.dataset.full || (scoreValue.dataset.full = scoreValue.textContent));
+
+    terminal.classList.add("playing");
+    lines.forEach((line) => line.classList.add("pending"));
+    termBody.scrollTop = 0;
+
+    lines[0].classList.remove("pending");
+    cmd.textContent = "";
+    cmd.classList.add("caret");
+    await wait(500);
+    for (const ch of fullCmd) {
+      if (token !== playToken) return;
+      cmd.textContent += ch;
+      await wait(45);
+    }
+    cmd.classList.remove("caret");
+    await wait(350);
+
+    for (const line of lines.slice(1)) {
+      if (token !== playToken) return;
+      line.classList.remove("pending");
+      termBody.scrollTop = termBody.scrollHeight;
+      if (barSpan && line.contains(barSpan)) {
+        const target = parseInt(fullScore, 10);
+        const filled = fullBar.replace(/ /g, "").length;
+        for (let i = 0; i <= filled; i++) {
+          if (token !== playToken) return;
+          barSpan.textContent = fullBar.slice(0, i) + " ".repeat(fullBar.length - i);
+          scoreValue.textContent = Math.round((target * i) / filled) + "%";
+          await wait(55);
+        }
+        await wait(300);
+      } else {
+        await wait(delayFor(line));
+      }
+    }
+    terminal.classList.remove("playing");
+  }
+
+  if (terminal && termBody) {
+    replayButton.addEventListener("click", () => {
+      play();
+    });
+    if (!reduceMotion && "IntersectionObserver" in window) {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) {
+            observer.disconnect();
+            play();
+          }
+        },
+        { threshold: 0.35 },
+      );
+      observer.observe(terminal);
+    }
+  }
+
+  // ─── Doneness simulator ───────────────────────────────
+  const counts = { critical: 2, warning: 2, unknown: 0, passed: 3, skipped: 11 };
+  const KEYS = ["critical", "warning", "unknown", "passed", "skipped"];
+  const COLOR_CLASS = { red: "t-red", yellow: "t-yellow", cyan: "t-cyan", green: "t-green" };
+  const INK_CLASS = { red: "ink-red", yellow: "ink-yellow", cyan: "ink-cyan", green: "ink-green" };
+
+  function span(cls, text) {
+    const el = document.createElement("span");
+    el.className = cls;
+    el.textContent = text;
+    return el;
+  }
+
+  function renderSim() {
+    if (!window.IsCooked || !$("#sim-value")) return;
+    const v = window.IsCooked.verdict(counts);
+    KEYS.forEach((key) => {
+      const field = $(`[data-count="${key}"]`);
+      // Leave a field alone while someone is typing in it.
+      if (document.activeElement !== field) field.value = counts[key];
+    });
+    $$("[data-step]").forEach((button) => {
+      if (Number(button.dataset.delta) < 0) button.disabled = counts[button.dataset.step] === 0;
+      else button.disabled = counts[button.dataset.step] >= 99;
+    });
+
+    const value = $("#sim-value");
+    value.textContent = v.score;
+    const verdictEl = $("#sim-verdict");
+    verdictEl.textContent = v.text;
+    [value.parentElement, verdictEl].forEach((el) => {
+      el.classList.remove(...Object.values(INK_CLASS));
+      el.classList.add(INK_CLASS[v.color]);
+    });
+    $("#sim-marker").style.left = `${v.score}%`;
+    const temp = $("#thermal-temp");
+    if (temp) temp.textContent = `${v.score}%`;
+    const thermal = $(".thermal canvas");
+    if (thermal) thermal.dataset.score = String(v.score);
+    document.dispatchEvent(new CustomEvent("iscooked:score", { detail: { score: v.score, target: ".sim-output" } }));
+
+    const color = COLOR_CLASS[v.color];
+    const term = $("#sim-terminal");
+    term.replaceChildren(
+      "  ", span("t-heat " + color, `${v.score}%`), " ", span("t-dim", "cooked"),
+      "  [", span(color, v.bar), "]\n\n  ",
+      span("t-bold " + color, v.text), "\n\n  ",
+      span("t-red t-bold", String(counts.critical)), " critical  ",
+      span("t-yellow t-bold", String(counts.warning)), " warnings  ",
+      span("t-green t-bold", String(counts.passed)), " passed\n  ",
+      span("t-cyan", String(counts.unknown)), " unknown  ",
+      span("t-dim", `${counts.skipped} skipped  (${v.total} results)`), "\n\n  ",
+      span(COLOR_CLASS[v.message.color], v.message.text),
+    );
+
+    const parts = [];
+    if (counts.critical) parts.push(`${counts.critical} × 10`);
+    if (counts.warning) parts.push(`${counts.warning} × 4`);
+    if (counts.unknown) parts.push(`${counts.unknown} × 4`);
+    const sum = parts.length ? `${parts.join(" + ")} = ${v.raw}` : "No points";
+    const capped = v.raw > 100 ? `, capped at 100` : "";
+    let note;
+    if (v.level === "defrosting" && counts.critical + counts.warning + counts.passed === 0) {
+      note = "Nothing passed and nothing failed, so the scanner will not call it fresh. Resolve the unknowns and skips first.";
+    } else if (v.level === "defrosting") {
+      note = "Only unknown or skipped results add heat here, so the verdict stays on ice instead of fresh.";
+    } else if (counts.critical > 0 && v.score < 15) {
+      note = "A critical finding lifts any low score to at least Slightly warm.";
+    } else if (counts.critical > 0) {
+      note = "Any critical finding turns the verdict red, whatever the number.";
+    } else if (counts.warning > 0 && v.score < 15) {
+      note = "A warning lifts a low score to at least Slightly warm.";
+    } else if (v.level === "fresh") {
+      note = "No heat from the checks that ran. A low score is still not a guarantee.";
+    } else {
+      note = "Unknown results count like warnings. The scanner could not rule them out.";
+    }
+    const strong = document.createElement("strong");
+    strong.textContent = `${sum}${capped}.`;
+    $("#sim-explain").replaceChildren(strong, " " + note);
+  }
+
+  $$("[data-step]").forEach((button) =>
+    button.addEventListener("click", () => {
+      const key = button.dataset.step;
+      counts[key] = Math.max(0, Math.min(99, counts[key] + Number(button.dataset.delta)));
+      $$("[data-preset]").forEach((chip) => chip.setAttribute("aria-pressed", "false"));
+      renderSim();
+    }),
+  );
+  $$("[data-count]").forEach((field) => {
+    const key = field.dataset.count;
+    field.addEventListener("input", () => {
+      if (field.value === "") return;
+      const n = Math.max(0, Math.min(99, Math.floor(Number(field.value)) || 0));
+      counts[key] = n;
+      $$("[data-preset]").forEach((chip) => chip.setAttribute("aria-pressed", "false"));
+      renderSim();
+    });
+    // An emptied or out-of-range field snaps back to the value in use.
+    field.addEventListener("blur", () => {
+      field.value = counts[key];
+    });
+  });
+
+  $$("[data-preset]").forEach((chip) => {
+    const label = chip.querySelector("[data-preset-verdict]");
+    if (label && window.IsCooked) {
+      const [critical, warning, unknown, passed, skipped] = chip.dataset.preset.split(",").map(Number);
+      const v = window.IsCooked.verdict({ critical, warning, unknown, passed, skipped });
+      label.textContent = `${v.score}% · ${v.text.toLowerCase()}`;
+    }
+    if (chip.classList.contains("presets-reset")) {
+      chip.addEventListener("click", () => {
+        KEYS.forEach((key) => {
+          counts[key] = 0;
+        });
+        $$("[data-preset]").forEach((other) => other.setAttribute("aria-pressed", "false"));
+        renderSim();
+      });
+      return;
+    }
+    chip.setAttribute("aria-pressed", "false");
+    chip.addEventListener("click", () => {
+      chip.dataset.preset.split(",").map(Number).forEach((n, i) => {
+        counts[KEYS[i]] = n;
+      });
+      $$("[data-preset]").forEach((other) => other.setAttribute("aria-pressed", String(other === chip)));
+      renderSim();
+    });
+  });
+
+  // ─── Boot ─────────────────────────────────────────────
+  $$(".enhancement").forEach((element) => {
     element.hidden = false;
   });
-  selectPanel(categories, coveragePanels, "category", "panel", "network");
-  selectPanel(methods, methodPanels, "install", "method", "quick");
-  updateFindings();
+  if (categories.length) selectPanel(categories, coveragePanels, "category", "panel", "network");
+  if (methods.length) selectPanel(methods, methodPanels, "install", "method", "quick");
+  renderSim();
   document.documentElement.classList.add("enhanced");
 })();
