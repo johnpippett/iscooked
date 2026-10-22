@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 import subprocess
 
+import pytest
+
 SCRIPT = Path(__file__).resolve().parents[1] / 'site' / 'iscooked.com'
 
 
@@ -87,6 +89,8 @@ def test_oversized_config_unknown(tmp_path):
     assert 'UNKNOWN' in run_check(tmp_path, ' ' * (1048576 + 1))
 
 
+@pytest.mark.skipif(hasattr(os, 'geteuid') and os.geteuid() == 0,
+                    reason='root can read mode 000 files, so the fixture cannot be unreadable')
 def test_unreadable_config_is_unknown(tmp_path):
     assert 'UNKNOWN' in run_check(tmp_path, {'mcpServers': {}}, mode=0o000)
 

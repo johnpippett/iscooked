@@ -10,7 +10,7 @@ set -euo pipefail
 PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 export PATH
 
-VERSION="1.2.1"
+VERSION="1.3.0"
 
 # ─── Colors & Formatting ───────────────────────────────────────────────────────
 
@@ -150,6 +150,7 @@ check_area_metadata() {
         check_mcp_config) CHECK_METADATA_ID="14"; CHECK_METADATA_TITLE="MCP Configuration" ;;
         check_agent_gateway) CHECK_METADATA_ID="15"; CHECK_METADATA_TITLE="Agent Gateway Configuration" ;;
         check_model_code_execution) CHECK_METADATA_ID="16"; CHECK_METADATA_TITLE="Remote Model Code" ;;
+        check_runtime_versions) CHECK_METADATA_ID="17"; CHECK_METADATA_TITLE="Runtime Versions" ;;
         *) return 2 ;;
     esac
 }
@@ -432,7 +433,7 @@ format_http_host() {
 is_numeric_ip_host() {
     local host="$1"
     if command_exists python3; then
-        python3 -I -B -c 'import ipaddress, sys; ipaddress.ip_address(sys.argv[1])' "$host" 2>/dev/null
+        python3 -I -B -S -c 'import ipaddress, sys; ipaddress.ip_address(sys.argv[1])' "$host" 2>/dev/null
     else
         if [[ "$host" == *:* ]]; then
             [[ "$host" =~ ^[0-9A-Fa-f:.]+$ ]]
@@ -459,6 +460,9 @@ AI_SERVICE_PORTS="11434:Ollama
 1234:LM Studio (alt)
 8000:vLLM / FastChat
 5001:LocalAI
+30000:SGLang
+4000:LiteLLM proxy
+50052:llama.cpp RPC server
 9090:Prometheus (AI metrics)"
 
 # Print the first common AI service port listening beyond loopback.
@@ -537,7 +541,7 @@ check_network_exposure() {
 
 # Parse bounded model metadata without printing model names or other response data.
 api_model_metadata() {
-    python3 -I -B -c '
+    python3 -I -B -S -c '
 import json, sys
 kind = sys.argv[1]
 try:
@@ -622,7 +626,7 @@ check_api_auth() {
             else
                 host=$(get_listen_host "$line" "$port")
                 # Refuse hostnames and malformed socket data before building URLs.
-                if [[ "$host" != "*" ]] && ! python3 -I -B -c 'import ipaddress,sys; ipaddress.ip_address(sys.argv[1])' "$host" 2>/dev/null; then
+                if [[ "$host" != "*" ]] && ! python3 -I -B -S -c 'import ipaddress,sys; ipaddress.ip_address(sys.argv[1])' "$host" 2>/dev/null; then
                     result_skip "API port ${port}: unsupported local bind address"
                     continue
                 fi
@@ -757,7 +761,7 @@ docker_read_metadata() {
     elif command_exists gtimeout; then
         gtimeout 5 docker "$@"
     elif command_exists python3; then
-        python3 -I -B -c 'import subprocess, sys
+        python3 -I -B -S -c 'import subprocess, sys
 try:
     sys.exit(subprocess.run(["docker", *sys.argv[1:]], timeout=5).returncode)
 except (OSError, subprocess.TimeoutExpired):
@@ -790,7 +794,7 @@ check_docker_risks() {
     # Only a parsed array of strings can establish daemon security mode.
     # Without a JSON parser, retain unknown rather than infer rootful access.
     if command_exists python3; then
-        daemon_mode=$(printf '%s' "$security_options" | python3 -I -B -c 'import json, sys
+        daemon_mode=$(printf '%s' "$security_options" | python3 -I -B -S -c 'import json, sys
 try:
     options = json.load(sys.stdin)
     if not isinstance(options, list) or not all(isinstance(x, str) for x in options):
@@ -936,7 +940,7 @@ except (ValueError, TypeError):
 # Browser control inspection uses process evidence, never a guessed default port.
 # Only /json/version is read; response-supplied control URLs are never followed.
 browser_debugging_evidence() {
-    python3 -I -B - "$OS_TYPE" <<'PY'
+    python3 -I -B -S - "$OS_TYPE" <<'PY'
 import ipaddress
 import json
 import os
@@ -1241,7 +1245,7 @@ check_mcp_config() {
         return
     fi
     local mcp_output mcp_severity mcp_message
-    if ! mcp_output=$(python3 -I -B - 2>/dev/null <<'MCP_PY'
+    if ! mcp_output=$(python3 -I -B -S - 2>/dev/null <<'MCP_PY'
 import json
 import os
 import re
@@ -1470,7 +1474,7 @@ check_agent_gateway() {
         return
     fi
     local gateway_output gateway_severity gateway_message
-    if ! gateway_output=$(python3 -I -B - 2>/dev/null <<'GATEWAY_PY'
+    if ! gateway_output=$(python3 -I -B -S - 2>/dev/null <<'GATEWAY_PY'
 import fnmatch
 import ipaddress
 import json
@@ -1487,9 +1491,9 @@ import time
 # Intentionally strict JSON: JSON5, includes, environment interpolation and
 # runtime/CLI overrides require OpenClaw's own policy resolver and are not run.
 LIMIT = 1048576
-SUPPORTED_OPENCLAW_VERSIONS = frozenset({
-    '2026.9.3', '2026.9.4', '2026.9.5', '2026.9.6',
-})
+# Oldest release whose config keys were reviewed. Newer releases are accepted:
+# the strict parser below fails closed (UNKNOWN) on unrecognized values.
+MIN_OPENCLAW_VERSION = (2026, 9, 3)
 
 def emit(level, message):
     print(level + '\tOpenClaw: ' + message)
@@ -1565,7 +1569,7 @@ def supported_cli_version():
             r'OpenClaw ([0-9]{4}\.[0-9]{1,2}\.[0-9]{1,2})(?: \([0-9a-fA-F]{6,40}\))?',
             output.decode('ascii').strip(),
         )
-        return bool(match and match.group(1) in SUPPORTED_OPENCLAW_VERSIONS)
+        return bool(match and tuple(int(x) for x in match.group(1).split('.')) >= MIN_OPENCLAW_VERSION)
     except (OSError, UnicodeError, subprocess.TimeoutExpired):
         return False
     finally:
@@ -1604,7 +1608,7 @@ try:
     if not isinstance(config, dict) or unresolved(config):
         raise ValueError()
     if not supported_cli_version():
-        emit('unknown', 'OpenClaw CLI version unavailable or outside reviewed versions (2026.9.3–2026.9.6); policy inspection incomplete')
+        emit('unknown', 'OpenClaw CLI version unavailable or older than reviewed baseline 2026.9.3; policy inspection incomplete')
         sys.exit(0)
     gateway = object_at(config, 'gateway')
     auth = object_at(gateway, 'auth')
@@ -1899,7 +1903,9 @@ check_ssl_tls() {
 8188
 3000
 1234
-8000"
+8000
+30000
+4000"
     local found_http=false
     local listener_query_failed=false
     local listener_query_unavailable=false
@@ -1969,7 +1975,7 @@ check_ssl_tls() {
 check_processes() {
     section "09" "AI Process Enumeration"
 
-    local ai_process_patterns="ollama|llama[.]cpp|llama-server|text-generation|vllm|lmstudio|comfyui|stable-diffusion|koboldcpp|localai|whisper|faster-whisper|tabbyapi"
+    local ai_process_patterns="ollama|llama[.]cpp|llama-server|text-generation|vllm|lmstudio|comfyui|stable-diffusion|koboldcpp|localai|whisper|faster-whisper|tabbyapi|sglang|litellm"
 
     if ! command_exists ps; then
         result_skip "Process inspection requires ps"
@@ -2184,7 +2190,7 @@ _model_code_snapshot() {
     # Only stdlib process inspection: never import model packages or read configs.
     # ps cannot preserve argv boundaries perfectly; malformed/indirect launches
     # are not treated as proof of a disabled setting. Cap bytes, rows, and time.
-    python3 -I -B - <<'PY'
+    python3 -I -B -S - <<'PY'
 import os
 import re
 import select
@@ -2236,6 +2242,8 @@ def identity(tokens):
             return 'vLLM'
     if exe == 'text-generation-launcher':
         return 'TGI'
+    if re.fullmatch(r'python(?:3(?:\.\d+)?)?', exe) and tokens[1:3] == ['-m', 'sglang.launch_server']:
+        return 'SGLang'
     return None
 
 
@@ -2338,7 +2346,324 @@ check_model_code_execution() {
         esac
     done <<< "$snapshot"
     if [[ "$found" == false ]]; then
-        result_skip "No supported active vLLM or TGI launch found; config files, environment overrides and other runtimes are not inspected."
+        result_skip "No supported active vLLM, TGI or SGLang launch found; config files, environment overrides and other runtimes are not inspected."
+    fi
+}
+
+# ─── Check 17: Runtime Versions ───────────────────────────────────────────────
+
+# Minimum versions that fix the reviewed advisories. Refresh this table and the
+# reviewed date when new advisories land: service|port|route|minimum|advisories
+RUNTIME_VERSIONS_REVIEWED="2026-10-22"
+RUNTIME_MIN_VERSIONS="Ollama|11434|/api/version|0.35.0|CVE-2026-103663, CVE-2026-108836
+vLLM|8000|/version|0.14.1|CVE-2026-22778
+LiteLLM proxy|4000|/health/readiness|1.83.14|CVE-2026-42208, CVE-2026-47101 and related"
+
+# LiteLLM releases published to PyPI with credential-stealing malware: 1.82.7 and
+# 1.82.8 (March 2026, PYSEC-2026-2) and 1.107.0 (October 21, 2026, also pushed as
+# the v1.107.0 Docker images). 1.106.2 is the last clean release named by both
+# October write-ups. Exact matches only; 1.107.0rc1 and rc2 were not affected.
+LITELLM_COMPROMISED_RELEASES="1.82.7 1.82.8 1.107.0"
+LITELLM_COMPROMISED_IMAGE_TAGS="v1.107.0"
+LITELLM_CLEAN_RELEASE="1.106.2"
+
+# Print "version<TAB>X.Y.Z<TAB>exact|suffixed", "unparsed", "absent" (LiteLLM
+# readiness without a version field) or "other" from a bounded response. Never
+# echo raw text.
+runtime_version_metadata() {
+    python3 -I -B -S -c '
+import json, re, sys
+service = sys.argv[1]
+try:
+    obj = json.load(sys.stdin)
+    version = None
+    if service == "Ollama":
+        if isinstance(obj, dict) and set(obj) == {"version"} and isinstance(obj["version"], str):
+            version = obj["version"]
+    elif service == "vLLM":
+        if isinstance(obj, dict) and isinstance(obj.get("version"), str):
+            version = obj["version"]
+        elif isinstance(obj, str) and obj.startswith("vLLM version "):
+            version = obj[len("vLLM version "):]
+    elif isinstance(obj, dict) and isinstance(obj.get("status"), str):
+        if isinstance(obj.get("litellm_version"), str):
+            version = obj["litellm_version"]
+        elif "db" in obj:
+            print("absent")
+            sys.exit(0)
+    if version is None:
+        print("other")
+    else:
+        match = re.match(r"v?([0-9]{1,4})\.([0-9]{1,4})\.([0-9]{1,6})(?![0-9])", version)
+        if match:
+            exact = "exact" if match.end() == len(version) else "suffixed"
+            print("version\t" + ".".join(match.groups()) + "\t" + exact)
+        else:
+            print("unparsed")
+except (ValueError, TypeError, RecursionError):
+    print("other")
+' "$1" 2>/dev/null
+}
+
+# Return 0 when dotted version $1 is lower than $2.
+version_below() {
+    local -a have=() need=()
+    local i a b
+    IFS=. read -r -a have <<< "$1"
+    IFS=. read -r -a need <<< "$2"
+    for i in 0 1 2; do
+        a=$((10#${have[i]:-0})); b=$((10#${need[i]:-0}))
+        if [[ "$a" -lt "$b" ]]; then return 0; fi
+        if [[ "$a" -gt "$b" ]]; then return 1; fi
+    done
+    return 1
+}
+
+# Return 0 when $1 is exactly one of the compromised LiteLLM releases.
+litellm_release_compromised() {
+    [[ " $LITELLM_COMPROMISED_RELEASES " == *" $1 "* ]]
+}
+
+# Read-only listing of common Python environments for LiteLLM package metadata
+# and the files the 2026 PyPI malware drops. -S keeps this interpreter from
+# loading any .pth file it inspects. Prints "ioc<TAB>path",
+# "bad<TAB>version<TAB>path" or "ok<TAB>version"; paths use ~ for $HOME.
+litellm_package_findings() {
+    python3 -I -B -S - "$HOME" "${TMPDIR:-/tmp}" $LITELLM_COMPROMISED_RELEASES <<'PY' 2>/dev/null
+import glob, os, re, sys, sysconfig
+home, tmpdir, bad = sys.argv[1], sys.argv[2], set(sys.argv[3:])
+system_patterns = [
+    "/usr/lib/python3*/site-packages", "/usr/lib/python3*/dist-packages",
+    "/usr/lib/python3/dist-packages", "/usr/local/lib/python3*/site-packages",
+    "/usr/local/lib/python3*/dist-packages", "/opt/homebrew/lib/python3*/site-packages",
+    "/Library/Frameworks/Python.framework/Versions/*/lib/python3*/site-packages",
+    "/opt/conda/lib/python3*/site-packages", "/opt/conda/envs/*/lib/python3*/site-packages",
+]
+home_patterns = [
+    ".local/lib/python3*/site-packages", "Library/Python/3*/lib/python/site-packages",
+    ".pyenv/versions/*/lib/python3*/site-packages",
+    ".pyenv/versions/*/envs/*/lib/python3*/site-packages",
+    ".venv/lib/python3*/site-packages", "venv/lib/python3*/site-packages",
+    "*/.venv/lib/python3*/site-packages", "*/venv/lib/python3*/site-packages",
+    "*/*/.venv/lib/python3*/site-packages", "*/*/venv/lib/python3*/site-packages",
+    ".virtualenvs/*/lib/python3*/site-packages",
+    ".local/pipx/venvs/*/lib/python3*/site-packages",
+    ".local/share/pipx/venvs/*/lib/python3*/site-packages",
+    ".local/share/uv/tools/*/lib/python3*/site-packages",
+]
+for base in ("miniconda3", "anaconda3", "miniforge3", "mambaforge"):
+    home_patterns += [base + "/lib/python3*/site-packages", base + "/envs/*/lib/python3*/site-packages"]
+
+def shown(path):
+    if home and (path == home or path.startswith(home.rstrip("/") + "/")):
+        path = "~" + path[len(home.rstrip("/")):]
+    return "".join(c if c.isprintable() and c != "\t" else "?" for c in path)
+
+candidates = [sysconfig.get_paths().get(k) for k in ("purelib", "platlib")]
+for pattern in system_patterns:
+    candidates += sorted(glob.glob(pattern))
+if home and os.path.isdir(home):
+    for pattern in home_patterns:
+        candidates += sorted(glob.glob(os.path.join(glob.escape(home), pattern)))
+
+seen = set()
+ok = set()
+for directory in candidates:
+    if not directory or not os.path.isdir(directory):
+        continue
+    real = os.path.realpath(directory)
+    if real in seen:
+        continue
+    seen.add(real)
+    if len(seen) > 500:
+        break
+    for name in ("cook.pth", "litellm_init.pth"):
+        path = os.path.join(directory, name)
+        if not os.path.isfile(path):
+            continue
+        if name == "cook.pth":
+            try:
+                with open(path, "rb") as handle:
+                    if handle.read(64).strip() != b"import cook":
+                        continue
+            except OSError:
+                pass
+        print("ioc\t" + shown(path))
+    try:
+        entries = os.listdir(directory)
+    except OSError:
+        continue
+    for entry in entries:
+        match = re.fullmatch(r"litellm-([0-9][0-9A-Za-z.+!]*?)(?:-py[0-9.]+)?\.(?:dist|egg)-info", entry)
+        if not match:
+            continue
+        version = match.group(1)
+        if version in bad:
+            print("bad\t" + version + "\t" + shown(os.path.join(directory, entry)))
+        else:
+            ok.add(version)
+
+for directory in sorted({"/tmp", tmpdir}):
+    for name in (".pc_once_72129118c59f5636c0bb", "remote_code_loader.lock"):
+        path = os.path.join(directory, name)
+        if os.path.lexists(path):
+            print("ioc\t" + shown(path))
+for version in sorted(ok):
+    print("ok\t" + version)
+PY
+}
+
+# Local image tags only; no pulls, registry lookups or container access.
+# Prints "bad<TAB>tag<TAB>image repository:tag".
+litellm_image_findings() {
+    command_exists docker || return 0
+    local images ref
+    images=$(docker_read_metadata images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null) || return 0
+    while IFS= read -r ref; do
+        [[ "$ref" =~ (^|/)(berriai/litellm(-database|-non_root)?|litellm/litellm):(v[0-9.]+)$ ]] || continue
+        if [[ " $LITELLM_COMPROMISED_IMAGE_TAGS " == *" ${BASH_REMATCH[4]} "* ]]; then
+            printf 'bad\t%s\tdocker image %s\n' "${BASH_REMATCH[4]}" "$ref"
+        fi
+    done <<< "$images"
+}
+
+check_runtime_versions() {
+    section "17" "Runtime Versions"
+    if ! command_exists python3; then
+        result_skip "python3 is required for runtime version and LiteLLM package checks"
+        return
+    fi
+    local probe_list="$RUNTIME_MIN_VERSIONS"
+    if ! command_exists curl; then
+        result_skip "curl is required for bounded runtime version probes; checking local LiteLLM packages only"
+        probe_list=""
+    fi
+
+    # Scope: one read-only GET per runtime on its default port. Identity is
+    # confirmed from the response shape or the listening process before a
+    # version is trusted. No inference, credentials, redirects or proxies.
+    local service port route minimum advisories lines line host target exposed bind_known
+    local process_identity response status body metadata state version exact identified label
+    local results_before=$TOTAL_CHECKS
+    while IFS='|' read -r service port route minimum advisories; do
+        [[ -n "$service" ]] || continue
+        bind_known=true; exposed=false; process_identity=false; target=""
+        if lines=$(get_listen_line "$port"); then
+            [[ -n "$lines" ]] || continue
+        else
+            bind_known=false; lines=""
+        fi
+        while IFS= read -r line; do
+            [[ -n "$line" ]] || continue
+            host=$(get_listen_host "$line" "$port")
+            case "$host" in
+                '0.0.0.0'|'*') exposed=true; target="127.0.0.1" ;;
+                '::') exposed=true; [[ -n "$target" ]] || target="::1" ;;
+                *)
+                    if is_loopback_host "$host"; then
+                        target="$host"
+                    else
+                        exposed=true
+                        # Literal addresses only; never probe a discovered hostname.
+                        if [[ -z "$target" ]] && is_numeric_ip_host "$host"; then
+                            target="$host"
+                        fi
+                    fi ;;
+            esac
+            case "$service:$line" in
+                Ollama:*'"ollama"'*|vLLM:*'"vllm"'*|"LiteLLM proxy:"*'"litellm"'*) process_identity=true ;;
+            esac
+        done <<< "$lines"
+        if [[ -z "$target" ]]; then
+            if [[ "$bind_known" == true ]]; then
+                result_skip "${service} port ${port}: unsupported local bind address; version not checked"
+                continue
+            fi
+            target="127.0.0.1"
+        fi
+
+        response=$(curl -q -s --connect-timeout 2 --max-time 5 --max-filesize 65536 --noproxy '*' --proto '=http' -w '\n%{http_code}' "http://$(format_http_host "$target"):${port}${route}" 2>/dev/null) || response=$'\n000'
+        status="${response##*$'\n'}"
+        body="${response%$'\n'*}"
+        metadata="other"
+        if [[ "$status" == "200" && "${#body}" -le 65536 ]]; then
+            metadata=$(printf '%s' "$body" | runtime_version_metadata "$service")
+        fi
+        state="" version="" exact=""
+        IFS=$'\t' read -r state version exact <<< "$metadata" || true
+
+        # Ollama's and LiteLLM's version payloads are distinctive. vLLM's /version
+        # shape is generic, so it also needs the process or the model-list owner.
+        identified="$process_identity"
+        case "$service" in
+            Ollama) [[ "$state" == version || "$state" == unparsed ]] && identified=true ;;
+            "LiteLLM proxy") [[ "$state" == version || "$state" == unparsed ]] && identified=true ;;
+            vLLM)
+                if [[ "$identified" == false && ( "$state" == version || "$state" == unparsed ) ]]; then
+                    local models_response
+                    models_response=$(curl -q -s --connect-timeout 2 --max-time 5 --max-filesize 65536 --noproxy '*' --proto '=http' -w '\n%{http_code}' "http://$(format_http_host "$target"):${port}/v1/models" 2>/dev/null) || models_response=$'\n000'
+                    if [[ "${models_response##*$'\n'}" == "200" ]] && [[ "$(printf '%s' "${models_response%$'\n'*}" | api_model_metadata vLLM)" == vLLM ]]; then
+                        identified=true
+                    fi
+                fi ;;
+        esac
+        if [[ "$identified" == false ]]; then
+            if [[ "$status" != "000" ]]; then
+                result_skip "${service} port ${port}${route}: service identity unconfirmed; version not checked"
+            fi
+            continue
+        fi
+
+        label="${service} on port ${port}"
+        case "$state" in
+            version)
+                if [[ "$service" == "LiteLLM proxy" && "$exact" == exact ]] && litellm_release_compromised "$version"; then
+                    result_cooked "${label} reports ${version}, a release published with credential-stealing malware; treat the host as compromised, rotate its provider keys and master key, and redeploy ${LITELLM_CLEAN_RELEASE}"
+                elif [[ "$service" == Ollama && "$version" == "0.0.0" ]]; then
+                    result_unknown "${label} reports development build 0.0.0; confirm it includes fixes for ${advisories}"
+                elif version_below "$version" "$minimum"; then
+                    if [[ "$bind_known" == false ]]; then
+                        result_warming "${label} reports ${version}, older than ${minimum} (${advisories}); bind exposure not verified"
+                    elif [[ "$exposed" == true ]]; then
+                        result_cooked "${label} reports ${version}, older than ${minimum} (${advisories}), and listens beyond localhost"
+                    else
+                        result_warming "${label} reports ${version}, older than ${minimum} (${advisories}); bound to localhost"
+                    fi
+                else
+                    result_safe "${label} reports ${version}, at or above ${minimum} (advisories reviewed ${RUNTIME_VERSIONS_REVIEWED})"
+                fi ;;
+            absent)
+                result_skip "${label} does not publish its version on ${route}; run litellm --version and confirm ${minimum} or later, and not ${LITELLM_COMPROMISED_RELEASES// /, }" ;;
+            unparsed)
+                result_unknown "${label}: version string not recognized; confirm ${minimum} or later (${advisories})" ;;
+            *)
+                result_unknown "${label}: version unavailable (HTTP ${status}); confirm ${minimum} or later (${advisories})" ;;
+        esac
+    done <<< "$probe_list"
+
+    # A malicious pip install is invisible from the network, so also look for
+    # the packages and dropped files on disk, plus locally pulled image tags.
+    local findings kind detail where ioc_count=0 bad_count=0 first_ioc="" first_bad="" ok_versions=""
+    findings="$(litellm_package_findings || true)"$'\n'"$(litellm_image_findings || true)"
+    while IFS=$'\t' read -r kind detail where; do
+        case "$kind" in
+            ioc) ioc_count=$((ioc_count + 1)); [[ -n "$first_ioc" ]] || first_ioc="$detail" ;;
+            bad) bad_count=$((bad_count + 1)); [[ -n "$first_bad" ]] || first_bad="${detail} in ${where}" ;;
+            ok) ok_versions="${ok_versions:+$ok_versions, }$detail" ;;
+        esac
+    done <<< "$findings"
+    if [[ "$ioc_count" -gt 0 ]]; then
+        result_cooked "LiteLLM supply-chain malware file found: ${first_ioc}$( [[ "$ioc_count" -le 1 ]] || printf ' (+%s more)' "$((ioc_count - 1))" ); treat this machine as compromised, stop the loader, remove the files, reinstall ${LITELLM_CLEAN_RELEASE} and rotate every credential it could reach"
+    fi
+    if [[ "$bad_count" -gt 0 ]]; then
+        result_cooked "Compromised LiteLLM release ${first_bad}$( [[ "$bad_count" -le 1 ]] || printf ' (+%s more)' "$((bad_count - 1))" ): published with credential-stealing malware; reinstall ${LITELLM_CLEAN_RELEASE} and rotate every credential this machine could reach"
+    fi
+    if [[ "$ioc_count" -eq 0 && "$bad_count" -eq 0 && -n "$ok_versions" ]]; then
+        result_safe "LiteLLM ${ok_versions} found in common Python environments; not a compromised release (${LITELLM_COMPROMISED_RELEASES// /, })"
+    fi
+
+    if [[ "$TOTAL_CHECKS" -eq "$results_before" ]]; then
+        result_skip "No Ollama, vLLM or LiteLLM proxy on its default port and no LiteLLM package in common Python environments; nothing to check"
     fi
 }
 
@@ -2504,7 +2829,7 @@ print_json_report() {
             printf '%s\0' "${FINDING_CHECK_IDS[index]}" "${FINDING_CHECK_TITLES[index]}" \
                 "${FINDING_STATUSES[index]}" "${FINDING_MESSAGES[index]}" "${FINDING_POINTS[index]}"
         done
-    } | python3 -I -B -c '
+    } | python3 -I -B -S -c '
 import json
 import sys
 
@@ -2653,6 +2978,7 @@ main() {
     run_check check_mcp_config
     run_check check_agent_gateway
     run_check check_model_code_execution
+    run_check check_runtime_versions
 
     if [[ "$OUTPUT_FORMAT" == json ]]; then
         print_json_report
