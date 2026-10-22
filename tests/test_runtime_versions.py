@@ -6,7 +6,7 @@ import pytest
 from test_iscooked import source_and_run
 
 
-def probe(port=11434, route_bodies=None, status='200', process='ollama', host='127.0.0.1', ss=None):
+def probe(port=11434, route_bodies=None, status='200', process='ollama', host='127.0.0.1', ss=None, netstat='exit 1'):
     """Mock one listener and a curl that answers by route."""
     arms = []
     for route, body in (route_bodies or {}).items():
@@ -17,7 +17,7 @@ def probe(port=11434, route_bodies=None, status='200', process='ollama', host='1
         line = f'LISTEN 0 128 {host}:{port} 0.0.0.0:* users:(("{process}",pid=12,fd=3))'
         ss = 'printf "%s\\n" ' + shlex.quote(line)
     return source_and_run('check_runtime_versions; echo SCORE=$SCORE', mocks={
-        'curl': curl, 'ss': ss, 'uname': 'echo Linux',
+        'curl': curl, 'ss': ss, 'netstat': netstat, 'uname': 'echo Linux',
     })
 
 
@@ -104,7 +104,7 @@ def test_requests_are_bounded_read_only_and_local(tmp_path):
     logfile = tmp_path / 'calls'
     r = source_and_run('check_runtime_versions', mocks={
         'curl': 'printf "%s\\n" "$*" >> "$AUTH_LOG"; printf "\\n000"; exit 7',
-        'ss': 'exit 1', 'uname': 'echo Linux',
+        'ss': 'exit 1', 'netstat': 'exit 1', 'uname': 'echo Linux',
     }, env_vars={'AUTH_LOG': str(logfile), 'HTTP_PROXY': 'http://proxy.invalid'})
     assert r.returncode == 0
     calls = logfile.read_text().replace('\n%{http_code}', ' %{http_code}').splitlines()
