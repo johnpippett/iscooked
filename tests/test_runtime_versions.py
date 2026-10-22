@@ -252,3 +252,61 @@ def test_scanner_python_never_processes_site_packages_pth_files():
     invocations = text.count('python3 -I')
     assert invocations > 0
     assert text.count('python3 -I -B -S') == invocations
+
+
+# ── Pre-release builds of a minimum version are below that minimum ────────────
+
+
+@pytest.mark.parametrize('version,score', [
+    ('0.35.0-rc1', 4), ('0.35.0-rc.2', 4), ('0.35.0-beta', 4),
+    ('0.35.0', 0), ('0.35.1-rc1', 0),
+])
+def test_ollama_prerelease_of_minimum_is_older(version, score):
+    r = probe(route_bodies={'/api/version': {'version': version}})
+    assert f'SCORE={score}' in r.stdout_plain
+    if score:
+        assert f'{version}, older than 0.35.0' in r.stdout_plain
+
+
+@pytest.mark.parametrize('version,score', [
+    ('0.14.1rc1', 4), ('0.14.1a2', 4), ('0.14.1b1', 4), ('0.14.1.dev42+g1234abc', 4),
+    ('0.14.1rc1+cu129', 4), ('0.14.1+cu129', 0), ('0.14.1.post1', 0), ('0.14.2rc1', 0),
+])
+def test_vllm_prerelease_of_minimum_is_older(version, score):
+    r = probe(port=8000, process='vllm', route_bodies={'/version': {'version': version}})
+    assert f'SCORE={score}' in r.stdout_plain
+    if score:
+        assert f'{version}, older than 0.14.1' in r.stdout_plain
+
+
+def test_litellm_prerelease_of_minimum_is_older():
+    r = probe(port=4000, process='litellm', route_bodies={
+        '/health/readiness': {'status': 'healthy', 'db': 'connected', 'litellm_version': '1.83.14rc1'},
+    })
+    assert 'older than 1.83.14' in r.stdout_plain
+    assert 'SCORE=4' in r.stdout_plain
+
+
+# ── LiteLLM Docker tag styles around the compromised release ──────────────────
+
+
+@pytest.mark.parametrize('tag', [
+    'v1.107.0', 'main-v1.107.0', 'v1.107.0-stable', 'main-v1.107.0-stable',
+    'v1.107.0-nightly', 'litellm_stable_release_branch-v1.107.0-stable',
+])
+def test_compromised_docker_image_tag_styles_are_cooked(tmp_path, tag):
+    ref = f'ghcr.io/berriai/litellm:{tag}'
+    r, _ = local_scan(tmp_path, docker=f'printf "%s\\n" {shlex.quote(ref)}')
+    assert f'v1.107.0 in docker image {ref}' in r.stdout_plain
+    assert 'SCORE=10' in r.stdout_plain
+
+
+@pytest.mark.parametrize('tag', [
+    'v1.107.0rc1', 'v1.107.0-rc1', 'main-v1.107.0.rc2', 'v1.107.01', 'v1.107.0.1',
+    'v1.107.00-stable', 'v11.107.0', 'v1.1107.0', 'main-v1.106.2-stable', 'main-stable',
+])
+def test_unrelated_docker_image_tags_are_not_cooked(tmp_path, tag):
+    ref = f'ghcr.io/berriai/litellm:{tag}'
+    r, _ = local_scan(tmp_path, docker=f'printf "%s\\n" {shlex.quote(ref)}')
+    assert 'docker image' not in r.stdout_plain
+    assert 'SCORE=0' in r.stdout_plain

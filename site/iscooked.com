@@ -10,7 +10,7 @@ set -euo pipefail
 PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 export PATH
 
-VERSION="1.3.0"
+VERSION="1.3.1"
 
 # ─── Colors & Formatting ───────────────────────────────────────────────────────
 
@@ -2367,9 +2367,11 @@ LITELLM_COMPROMISED_RELEASES="1.82.7 1.82.8 1.107.0"
 LITELLM_COMPROMISED_IMAGE_TAGS="v1.107.0"
 LITELLM_CLEAN_RELEASE="1.106.2"
 
-# Print "version<TAB>X.Y.Z<TAB>exact|suffixed", "unparsed", "absent" (LiteLLM
-# readiness without a version field) or "other" from a bounded response. Never
-# echo raw text.
+# Print "version<TAB>X.Y.Z<TAB>exact|suffixed|prerelease<TAB>shown", "unparsed",
+# "absent" (LiteLLM readiness without a version field) or "other" from a bounded
+# response. A pre-release (SemVer "-rc1", PEP 440 "rc1", "a2", ".dev3") comes
+# before its X.Y.Z; "+local" and ".post1" do not. "shown" adds only a short,
+# plain pre-release suffix to X.Y.Z. Never echo raw text.
 runtime_version_metadata() {
     python3 -I -B -S -c '
 import json, re, sys
@@ -2396,8 +2398,18 @@ try:
     else:
         match = re.match(r"v?([0-9]{1,4})\.([0-9]{1,4})\.([0-9]{1,6})(?![0-9])", version)
         if match:
-            exact = "exact" if match.end() == len(version) else "suffixed"
-            print("version\t" + ".".join(match.groups()) + "\t" + exact)
+            base = ".".join(match.groups())
+            suffix = version[match.end():]
+            release = suffix.split("+", 1)[0]
+            shown = base
+            if not suffix:
+                exact = "exact"
+            elif release.startswith("-") or re.match(r"[._]?(a|alpha|b|beta|c|rc|pre|preview|dev)(?![a-z])", release, re.I):
+                exact = "prerelease"
+                shown = base + (suffix if re.fullmatch(r"[0-9A-Za-z.+_-]{1,40}", suffix) else "-pre")
+            else:
+                exact = "suffixed"
+            print("version\t" + base + "\t" + exact + "\t" + shown)
         else:
             print("unparsed")
 except (ValueError, TypeError, RecursionError):
@@ -2517,12 +2529,18 @@ PY
 # Prints "bad<TAB>tag<TAB>image repository:tag".
 litellm_image_findings() {
     command_exists docker || return 0
-    local images ref
+    local images ref tag
     images=$(docker_read_metadata images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null) || return 0
     while IFS= read -r ref; do
-        [[ "$ref" =~ (^|/)(berriai/litellm(-database|-non_root)?|litellm/litellm):(v[0-9.]+)$ ]] || continue
-        if [[ " $LITELLM_COMPROMISED_IMAGE_TAGS " == *" ${BASH_REMATCH[4]} "* ]]; then
-            printf 'bad\t%s\tdocker image %s\n' "${BASH_REMATCH[4]}" "$ref"
+        # Tag styles: v1.2.3, main-v1.2.3, v1.2.3-stable, main-v1.2.3-nightly.
+        # Release candidates (v1.2.3rc1, v1.2.3-rc1, main-v1.2.3.rc1) never match.
+        [[ "$ref" =~ (^|/)(berriai/litellm(-database|-non_root)?|litellm/litellm):([A-Za-z0-9_.]+-)?(v[0-9]+\.[0-9]+\.[0-9]+)(-[A-Za-z0-9_.-]+)?$ ]] || continue
+        tag="${BASH_REMATCH[5]}"
+        case "${BASH_REMATCH[6]}" in
+            -[Rr][Cc]*|-[Aa][Ll][Pp][Hh][Aa]*|-[Bb][Ee][Tt][Aa]*|-[Dd][Ee][Vv]*|-[Pp][Rr][Ee]*) continue ;;
+        esac
+        if [[ " $LITELLM_COMPROMISED_IMAGE_TAGS " == *" $tag "* ]]; then
+            printf 'bad\t%s\tdocker image %s\n' "$tag" "$ref"
         fi
     done <<< "$images"
 }
@@ -2543,7 +2561,7 @@ check_runtime_versions() {
     # confirmed from the response shape or the listening process before a
     # version is trusted. No inference, credentials, redirects or proxies.
     local service port route minimum advisories lines line host target exposed bind_known
-    local process_identity response status body metadata state version exact identified label
+    local process_identity response status body metadata state version exact shown identified label
     local results_before=$TOTAL_CHECKS
     while IFS='|' read -r service port route minimum advisories; do
         [[ -n "$service" ]] || continue
@@ -2589,8 +2607,8 @@ check_runtime_versions() {
         if [[ "$status" == "200" && "${#body}" -le 65536 ]]; then
             metadata=$(printf '%s' "$body" | runtime_version_metadata "$service")
         fi
-        state="" version="" exact=""
-        IFS=$'\t' read -r state version exact <<< "$metadata" || true
+        state="" version="" exact="" shown=""
+        IFS=$'\t' read -r state version exact shown <<< "$metadata" || true
 
         # Ollama's and LiteLLM's version payloads are distinctive. vLLM's /version
         # shape is generic, so it also needs the process or the model-list owner.
@@ -2621,16 +2639,16 @@ check_runtime_versions() {
                     result_cooked "${label} reports ${version}, a release published with credential-stealing malware; treat the host as compromised, rotate its provider keys and master key, and redeploy ${LITELLM_CLEAN_RELEASE}"
                 elif [[ "$service" == Ollama && "$version" == "0.0.0" ]]; then
                     result_unknown "${label} reports development build 0.0.0; confirm it includes fixes for ${advisories}"
-                elif version_below "$version" "$minimum"; then
+                elif version_below "$version" "$minimum" || { [[ "$exact" == prerelease ]] && ! version_below "$minimum" "$version"; }; then
                     if [[ "$bind_known" == false ]]; then
-                        result_warming "${label} reports ${version}, older than ${minimum} (${advisories}); bind exposure not verified"
+                        result_warming "${label} reports ${shown}, older than ${minimum} (${advisories}); bind exposure not verified"
                     elif [[ "$exposed" == true ]]; then
-                        result_cooked "${label} reports ${version}, older than ${minimum} (${advisories}), and listens beyond localhost"
+                        result_cooked "${label} reports ${shown}, older than ${minimum} (${advisories}), and listens beyond localhost"
                     else
-                        result_warming "${label} reports ${version}, older than ${minimum} (${advisories}); bound to localhost"
+                        result_warming "${label} reports ${shown}, older than ${minimum} (${advisories}); bound to localhost"
                     fi
                 else
-                    result_safe "${label} reports ${version}, at or above ${minimum} (advisories reviewed ${RUNTIME_VERSIONS_REVIEWED})"
+                    result_safe "${label} reports ${shown}, at or above ${minimum} (advisories reviewed ${RUNTIME_VERSIONS_REVIEWED})"
                 fi ;;
             absent)
                 result_skip "${label} does not publish its version on ${route}; run litellm --version and confirm ${minimum} or later, and not ${LITELLM_COMPROMISED_RELEASES// /, }" ;;

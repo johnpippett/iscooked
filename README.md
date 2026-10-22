@@ -2,7 +2,7 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/johnpippett/iscooked?style=social)](https://github.com/johnpippett/iscooked)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-1.3.0-blue)](https://github.com/johnpippett/iscooked/releases)
+[![Version](https://img.shields.io/badge/version-1.3.1-blue)](https://github.com/johnpippett/iscooked/releases)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos-lightgrey)](https://github.com/johnpippett/iscooked)
 
 `iscooked` is a local security scanner for AI services, containers, and agent settings.
