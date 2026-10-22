@@ -2,7 +2,7 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/johnpippett/iscooked?style=social)](https://github.com/johnpippett/iscooked)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-1.2.1-blue)](https://github.com/johnpippett/iscooked/releases)
+[![Version](https://img.shields.io/badge/version-1.3.0-blue)](https://github.com/johnpippett/iscooked/releases)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos-lightgrey)](https://github.com/johnpippett/iscooked)
 
 `iscooked` is a local security scanner for AI services, containers, and agent settings.
@@ -79,6 +79,12 @@ The score is a capped heuristic. It is not a probability of compromise.
 
 A critical finding or warning can change a low-score verdict to `SLIGHTLY WARM`. A report with only unknown or skipped results can show `STILL DEFROSTING`. The scanner keeps unknown and skipped counts visible.
 
+## LiteLLM PyPI compromise
+
+LiteLLM `1.107.0` was published to PyPI on 2026-10-21 with a credential stealer, and the `v1.107.0` Docker images on GHCR and Docker Hub carried the same payload. For about three hours that day, the Docker Hub `latest`, `main-latest`, and `main-stable` tags also pointed at the infected image. PyPI removed the release within two hours. The wheels add `cook.pth`, `cook.py`, and `sitecustomize.py` to site-packages, so the stealer runs on every Python start in that environment, even without `import litellm`. On Linux and macOS it also starts a background loader that can run more code every hour. It collects cloud, SSH, CI, browser, and AI tool credentials, and on proxy hosts it also reads provider keys from the proxy database. This is the second LiteLLM compromise this year: `1.82.7` and `1.82.8` carried a similar stealer in March (PYSEC-2026-2).
+
+If you installed or ran an affected version, treat the machine as compromised. Remove the dropped files, reinstall `1.106.2` (the last clean release), redeploy containers from an image pinned by digest, and rotate every credential the machine could reach. That includes the LiteLLM master key and the provider keys stored in the proxy. Check 17 looks for these releases and files, but a clean scan does not undo a theft that already happened.
+
 ## What it checks
 
 The scanner has 17 check areas:
@@ -101,7 +107,7 @@ The scanner has 17 check areas:
 | 14 | MCP Configuration | Selected Model Context Protocol client files, filesystem grants, and permissions. |
 | 15 | Agent Gateway Configuration | Selected OpenClaw settings when the installed CLI is 2026.9.3 or later. |
 | 16 | Remote Model Code | Remote-code flags in recognized vLLM, Text Generation Inference, and SGLang launches. |
-| 17 | Runtime Versions | Ollama, vLLM, and LiteLLM proxy versions below the minimum that fixes reviewed advisories. |
+| 17 | Runtime Versions | Ollama, vLLM, and LiteLLM proxy versions below the minimum that fixes reviewed advisories, plus LiteLLM releases that shipped malware. |
 
 ## Unknown and skipped results
 
@@ -183,7 +189,9 @@ MCP and OpenClaw checks cover selected files and supported JSON settings. For Op
 
 Remote model-code checks cover recognized vLLM, Text Generation Inference, and SGLang command lines. They do not inspect configuration files, environment variables, or other runtimes. A model weights revision does not prove an executable code pin.
 
-Runtime version checks read `/api/version` on Ollama port `11434`, `/version` on vLLM port `8000`, and `/health/readiness` on LiteLLM proxy port `4000`. Each probe is one bounded GET with the same limits as the API checks. vLLM also needs its process name or its `/v1/models` owner before its version is trusted. The minimums cover advisories reviewed on 2026-10-22: Ollama `0.35.0`, vLLM `0.14.1`, and LiteLLM `1.83.14`. An outdated version on a non-loopback listener is critical; on localhost it is a warning. LiteLLM 1.84 and later do not publish their version on the public readiness route, so the check skips them. A version at or above the minimum does not rule out later advisories.
+Runtime version checks read `/api/version` on Ollama port `11434`, `/version` on vLLM port `8000`, and `/health/readiness` on LiteLLM proxy port `4000`. Each probe is one bounded GET with the same limits as the API checks. vLLM also needs its process name or its `/v1/models` owner before its version is trusted. The minimums cover advisories reviewed on 2026-10-22: Ollama `0.35.0`, vLLM `0.14.1`, and LiteLLM `1.83.14`. An outdated version on a non-loopback listener is critical; on localhost it is a warning. LiteLLM 1.84 and later do not publish their version on the public readiness route, so the check skips them. A version at or above the minimum does not rule out later advisories. A proxy that reports a compromised release (`1.82.7`, `1.82.8`, or `1.107.0`) is critical on any bind.
+
+A malicious `pip install` is not visible from the network, so check 17 also lists common Python environments on disk: system and Homebrew site-packages, the user site, pyenv, conda, pipx, uv tools, and `.venv` or `venv` folders up to two levels under your home folder. It reports a compromised `litellm` dist-info, a `cook.pth` that imports `cook`, a `litellm_init.pth`, and the stealer's marker and lock files in the temp folder. It also lists local Docker image tags, without pulls or registry lookups. It does not look inside images or containers, and it cannot recognize an infected image that was pulled under a mutable tag such as `latest`. The scanner starts Python with `-S`, so its own interpreter never runs a `.pth` file it inspects.
 
 Docker checks inspect known socket paths, the active Unix daemon endpoint, and host-root mounts. A read-only Docker socket mount can still permit daemon API calls. Rootless, proxy, and uncertain access can remain warning or unknown results.
 

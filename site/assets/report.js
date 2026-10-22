@@ -23,7 +23,7 @@
 
   const EXAMPLE = {
     schema_version: 1,
-    scanner: { name: "iscooked", version: "1.2.1" },
+    scanner: { name: "iscooked", version: "1.3.0" },
     platform: "linux",
     completed: true,
     summary: {
@@ -31,7 +31,7 @@
       counts: { total: 12, critical: 2, warning: 2, passed: 3, unknown: 1, skipped: 4 },
       score: { value: 32, raw_value: 32, maximum: 100, kind: "heuristic", includes_unknown: true },
     },
-    coverage: { areas_started: 16, areas_with_observations: 6, areas_with_unknown: 1, areas_with_skips: 4 },
+    coverage: { areas_started: 17, areas_with_observations: 6, areas_with_unknown: 1, areas_with_skips: 4 },
     findings: [
       { check: { id: "01", title: "Network Exposure" }, status: "critical", points: 10,
         message: "Unidentified service on port 8000 (commonly vLLM) is listening on ALL interfaces" },
