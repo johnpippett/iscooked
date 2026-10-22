@@ -150,6 +150,7 @@ check_area_metadata() {
         check_mcp_config) CHECK_METADATA_ID="14"; CHECK_METADATA_TITLE="MCP Configuration" ;;
         check_agent_gateway) CHECK_METADATA_ID="15"; CHECK_METADATA_TITLE="Agent Gateway Configuration" ;;
         check_model_code_execution) CHECK_METADATA_ID="16"; CHECK_METADATA_TITLE="Remote Model Code" ;;
+        check_runtime_versions) CHECK_METADATA_ID="17"; CHECK_METADATA_TITLE="Runtime Versions" ;;
         *) return 2 ;;
     esac
 }
@@ -459,6 +460,9 @@ AI_SERVICE_PORTS="11434:Ollama
 1234:LM Studio (alt)
 8000:vLLM / FastChat
 5001:LocalAI
+30000:SGLang
+4000:LiteLLM proxy
+50052:llama.cpp RPC server
 9090:Prometheus (AI metrics)"
 
 # Print the first common AI service port listening beyond loopback.
@@ -1487,9 +1491,9 @@ import time
 # Intentionally strict JSON: JSON5, includes, environment interpolation and
 # runtime/CLI overrides require OpenClaw's own policy resolver and are not run.
 LIMIT = 1048576
-SUPPORTED_OPENCLAW_VERSIONS = frozenset({
-    '2026.9.3', '2026.9.4', '2026.9.5', '2026.9.6',
-})
+# Oldest release whose config keys were reviewed. Newer releases are accepted:
+# the strict parser below fails closed (UNKNOWN) on unrecognized values.
+MIN_OPENCLAW_VERSION = (2026, 9, 3)
 
 def emit(level, message):
     print(level + '\tOpenClaw: ' + message)
@@ -1565,7 +1569,7 @@ def supported_cli_version():
             r'OpenClaw ([0-9]{4}\.[0-9]{1,2}\.[0-9]{1,2})(?: \([0-9a-fA-F]{6,40}\))?',
             output.decode('ascii').strip(),
         )
-        return bool(match and match.group(1) in SUPPORTED_OPENCLAW_VERSIONS)
+        return bool(match and tuple(int(x) for x in match.group(1).split('.')) >= MIN_OPENCLAW_VERSION)
     except (OSError, UnicodeError, subprocess.TimeoutExpired):
         return False
     finally:
@@ -1604,7 +1608,7 @@ try:
     if not isinstance(config, dict) or unresolved(config):
         raise ValueError()
     if not supported_cli_version():
-        emit('unknown', 'OpenClaw CLI version unavailable or outside reviewed versions (2026.9.3–2026.9.6); policy inspection incomplete')
+        emit('unknown', 'OpenClaw CLI version unavailable or older than reviewed baseline 2026.9.3; policy inspection incomplete')
         sys.exit(0)
     gateway = object_at(config, 'gateway')
     auth = object_at(gateway, 'auth')
@@ -1899,7 +1903,9 @@ check_ssl_tls() {
 8188
 3000
 1234
-8000"
+8000
+30000
+4000"
     local found_http=false
     local listener_query_failed=false
     local listener_query_unavailable=false
@@ -1969,7 +1975,7 @@ check_ssl_tls() {
 check_processes() {
     section "09" "AI Process Enumeration"
 
-    local ai_process_patterns="ollama|llama[.]cpp|llama-server|text-generation|vllm|lmstudio|comfyui|stable-diffusion|koboldcpp|localai|whisper|faster-whisper|tabbyapi"
+    local ai_process_patterns="ollama|llama[.]cpp|llama-server|text-generation|vllm|lmstudio|comfyui|stable-diffusion|koboldcpp|localai|whisper|faster-whisper|tabbyapi|sglang|litellm"
 
     if ! command_exists ps; then
         result_skip "Process inspection requires ps"
@@ -2236,6 +2242,8 @@ def identity(tokens):
             return 'vLLM'
     if exe == 'text-generation-launcher':
         return 'TGI'
+    if re.fullmatch(r'python(?:3(?:\.\d+)?)?', exe) and tokens[1:3] == ['-m', 'sglang.launch_server']:
+        return 'SGLang'
     return None
 
 
@@ -2338,7 +2346,176 @@ check_model_code_execution() {
         esac
     done <<< "$snapshot"
     if [[ "$found" == false ]]; then
-        result_skip "No supported active vLLM or TGI launch found; config files, environment overrides and other runtimes are not inspected."
+        result_skip "No supported active vLLM, TGI or SGLang launch found; config files, environment overrides and other runtimes are not inspected."
+    fi
+}
+
+# ─── Check 17: Runtime Versions ───────────────────────────────────────────────
+
+# Minimum versions that fix the reviewed advisories. Refresh this table and the
+# reviewed date when new advisories land: service|port|route|minimum|advisories
+RUNTIME_VERSIONS_REVIEWED="2026-10-22"
+RUNTIME_MIN_VERSIONS="Ollama|11434|/api/version|0.35.0|CVE-2026-103663, CVE-2026-108836
+vLLM|8000|/version|0.14.1|CVE-2026-22778
+LiteLLM proxy|4000|/health/readiness|1.83.14|CVE-2026-42208, CVE-2026-47101 and related"
+
+# Print "version<TAB>X.Y.Z", "unparsed", "absent" (LiteLLM readiness without a
+# version field) or "other" from a bounded response. Never echo raw text.
+runtime_version_metadata() {
+    python3 -I -B -c '
+import json, re, sys
+service = sys.argv[1]
+try:
+    obj = json.load(sys.stdin)
+    version = None
+    if service == "Ollama":
+        if isinstance(obj, dict) and set(obj) == {"version"} and isinstance(obj["version"], str):
+            version = obj["version"]
+    elif service == "vLLM":
+        if isinstance(obj, dict) and isinstance(obj.get("version"), str):
+            version = obj["version"]
+        elif isinstance(obj, str) and obj.startswith("vLLM version "):
+            version = obj[len("vLLM version "):]
+    elif isinstance(obj, dict) and isinstance(obj.get("status"), str):
+        if isinstance(obj.get("litellm_version"), str):
+            version = obj["litellm_version"]
+        elif "db" in obj:
+            print("absent")
+            sys.exit(0)
+    if version is None:
+        print("other")
+    else:
+        match = re.match(r"v?([0-9]{1,4})\.([0-9]{1,4})\.([0-9]{1,6})(?![0-9])", version)
+        print("version\t" + ".".join(match.groups()) if match else "unparsed")
+except (ValueError, TypeError, RecursionError):
+    print("other")
+' "$1" 2>/dev/null
+}
+
+# Return 0 when dotted version $1 is lower than $2.
+version_below() {
+    local -a have=() need=()
+    local i a b
+    IFS=. read -r -a have <<< "$1"
+    IFS=. read -r -a need <<< "$2"
+    for i in 0 1 2; do
+        a=$((10#${have[i]:-0})); b=$((10#${need[i]:-0}))
+        if [[ "$a" -lt "$b" ]]; then return 0; fi
+        if [[ "$a" -gt "$b" ]]; then return 1; fi
+    done
+    return 1
+}
+
+check_runtime_versions() {
+    section "17" "Runtime Versions"
+    if ! command_exists curl || ! command_exists python3; then
+        result_skip "curl and python3 are required for bounded runtime version checks"
+        return
+    fi
+
+    # Scope: one read-only GET per runtime on its default port. Identity is
+    # confirmed from the response shape or the listening process before a
+    # version is trusted. No inference, credentials, redirects or proxies.
+    local service port route minimum advisories lines line host target exposed bind_known
+    local process_identity response status body metadata state version identified label
+    local results_before=$TOTAL_CHECKS
+    while IFS='|' read -r service port route minimum advisories; do
+        [[ -n "$service" ]] || continue
+        bind_known=true; exposed=false; process_identity=false; target=""
+        if lines=$(get_listen_line "$port"); then
+            [[ -n "$lines" ]] || continue
+        else
+            bind_known=false; lines=""
+        fi
+        while IFS= read -r line; do
+            [[ -n "$line" ]] || continue
+            host=$(get_listen_host "$line" "$port")
+            case "$host" in
+                '0.0.0.0'|'*') exposed=true; target="127.0.0.1" ;;
+                '::') exposed=true; [[ -n "$target" ]] || target="::1" ;;
+                *)
+                    if is_loopback_host "$host"; then
+                        target="$host"
+                    else
+                        exposed=true
+                        # Literal addresses only; never probe a discovered hostname.
+                        if [[ -z "$target" ]] && is_numeric_ip_host "$host"; then
+                            target="$host"
+                        fi
+                    fi ;;
+            esac
+            case "$service:$line" in
+                Ollama:*'"ollama"'*|vLLM:*'"vllm"'*|"LiteLLM proxy:"*'"litellm"'*) process_identity=true ;;
+            esac
+        done <<< "$lines"
+        if [[ -z "$target" ]]; then
+            if [[ "$bind_known" == true ]]; then
+                result_skip "${service} port ${port}: unsupported local bind address; version not checked"
+                continue
+            fi
+            target="127.0.0.1"
+        fi
+
+        response=$(curl -q -s --connect-timeout 2 --max-time 5 --max-filesize 65536 --noproxy '*' --proto '=http' -w '\n%{http_code}' "http://$(format_http_host "$target"):${port}${route}" 2>/dev/null) || response=$'\n000'
+        status="${response##*$'\n'}"
+        body="${response%$'\n'*}"
+        metadata="other"
+        if [[ "$status" == "200" && "${#body}" -le 65536 ]]; then
+            metadata=$(printf '%s' "$body" | runtime_version_metadata "$service")
+        fi
+        state="${metadata%%$'\t'*}"
+        version=""
+        [[ "$state" != version ]] || version="${metadata#*$'\t'}"
+
+        # Ollama's and LiteLLM's version payloads are distinctive. vLLM's /version
+        # shape is generic, so it also needs the process or the model-list owner.
+        identified="$process_identity"
+        case "$service" in
+            Ollama) [[ "$state" == version || "$state" == unparsed ]] && identified=true ;;
+            "LiteLLM proxy") [[ "$state" == version || "$state" == unparsed ]] && identified=true ;;
+            vLLM)
+                if [[ "$identified" == false && ( "$state" == version || "$state" == unparsed ) ]]; then
+                    local models_response
+                    models_response=$(curl -q -s --connect-timeout 2 --max-time 5 --max-filesize 65536 --noproxy '*' --proto '=http' -w '\n%{http_code}' "http://$(format_http_host "$target"):${port}/v1/models" 2>/dev/null) || models_response=$'\n000'
+                    if [[ "${models_response##*$'\n'}" == "200" ]] && [[ "$(printf '%s' "${models_response%$'\n'*}" | api_model_metadata vLLM)" == vLLM ]]; then
+                        identified=true
+                    fi
+                fi ;;
+        esac
+        if [[ "$identified" == false ]]; then
+            if [[ "$status" != "000" ]]; then
+                result_skip "${service} port ${port}${route}: service identity unconfirmed; version not checked"
+            fi
+            continue
+        fi
+
+        label="${service} on port ${port}"
+        case "$state" in
+            version)
+                if [[ "$service" == Ollama && "$version" == "0.0.0" ]]; then
+                    result_unknown "${label} reports development build 0.0.0; confirm it includes fixes for ${advisories}"
+                elif version_below "$version" "$minimum"; then
+                    if [[ "$bind_known" == false ]]; then
+                        result_warming "${label} reports ${version}, older than ${minimum} (${advisories}); bind exposure not verified"
+                    elif [[ "$exposed" == true ]]; then
+                        result_cooked "${label} reports ${version}, older than ${minimum} (${advisories}), and listens beyond localhost"
+                    else
+                        result_warming "${label} reports ${version}, older than ${minimum} (${advisories}); bound to localhost"
+                    fi
+                else
+                    result_safe "${label} reports ${version}, at or above ${minimum} (advisories reviewed ${RUNTIME_VERSIONS_REVIEWED})"
+                fi ;;
+            absent)
+                result_skip "${label} does not publish its version on ${route}; run litellm --version and confirm ${minimum} or later" ;;
+            unparsed)
+                result_unknown "${label}: version string not recognized; confirm ${minimum} or later (${advisories})" ;;
+            *)
+                result_unknown "${label}: version unavailable (HTTP ${status}); confirm ${minimum} or later (${advisories})" ;;
+        esac
+    done <<< "$RUNTIME_MIN_VERSIONS"
+
+    if [[ "$TOTAL_CHECKS" -eq "$results_before" ]]; then
+        result_skip "No Ollama, vLLM or LiteLLM proxy found on its default port; nothing to check"
     fi
 }
 
@@ -2653,6 +2830,7 @@ main() {
     run_check check_mcp_config
     run_check check_agent_gateway
     run_check check_model_code_execution
+    run_check check_runtime_versions
 
     if [[ "$OUTPUT_FORMAT" == json ]]; then
         print_json_report

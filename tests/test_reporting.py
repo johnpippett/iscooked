@@ -17,7 +17,8 @@ RELEASE_VERSION = (SCRIPT_PATH.parents[1] / "VERSION").read_text().strip()
 CHECKS = (
     "network_exposure api_auth model_permissions docker_risks gpu_exposure "
     "telemetry firewall ssl_tls processes sensitive_files history_logs "
-    "ollama_config browser_debugging mcp_config agent_gateway model_code_execution"
+    "ollama_config browser_debugging mcp_config agent_gateway model_code_execution "
+    "runtime_versions"
 ).split()
 
 

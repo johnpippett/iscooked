@@ -191,7 +191,7 @@ def test_allow_does_not_expand_restricted_base_profile(tmp_path):
 @pytest.mark.parametrize('script', [
     None,
     "printf 'OpenClaw 2026.9.2\\n'",
-    "printf 'OpenClaw 2026.9.7\\n'",
+    "printf 'OpenClaw 2025.12.30\\n'",
     "printf 'OpenClaw 2026.9.6-beta.1\\n'",
     "printf 'other output\\n'",
     'exit 2',
@@ -211,6 +211,12 @@ def test_openclaw_version_command_has_a_time_limit(tmp_path):
 
 def test_known_openclaw_version_with_build_suffix_retains_findings(tmp_path):
     out = run_check(tmp_path, powerful(), version_script="printf 'OpenClaw 2026.9.6 (abc123)\\n'")
+    assert 'COOKED' in out and 'SCORE=10' in out
+
+
+@pytest.mark.parametrize('version', ['2026.9.3', '2026.9.7', '2026.10.5', '2027.1.1'])
+def test_releases_at_or_after_reviewed_baseline_retain_findings(tmp_path, version):
+    out = run_check(tmp_path, powerful(), version_script=f"printf 'OpenClaw {version}\\n'")
     assert 'COOKED' in out and 'SCORE=10' in out
 
 

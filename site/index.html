@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#141512" media="(prefers-color-scheme: dark)" />
     <meta
       name="description"
-      content="A local security scanner for AI services, containers, and agents. Examine 16 check areas with one Bash script. No account. No telemetry."
+      content="A local security scanner for AI services, containers, and agents. Examine 17 check areas with one Bash script. No account. No telemetry."
     />
     <link rel="canonical" href="https://iscooked.com/" />
     <meta property="og:type" content="website" />
@@ -99,7 +99,7 @@
             <span class="terminal-title" id="demo-caption">Example scan · synthetic output</span>
             <button class="terminal-replay enhancement" type="button" hidden>Replay</button>
           </div>
-          <pre class="terminal-body" tabindex="0" aria-label="Example scanner output"><span class="ln"><span class="t-prompt">~</span> $ <span class="t-cmd">bash iscooked.com</span></span><span class="ln"></span><span class="ln t-banner">                    __            __       __</span><span class="ln t-banner">  _________  ____  / /_____  ____/ /  ____/ /_</span><span class="ln t-banner"> / ___/ __ \/ __ \/ //_/ _ \/ __  /  / ___/ __ \</span><span class="ln t-banner">/ /__/ /_/ / /_/ / ,&lt; /  __/ /_/ /_ (__  ) / / /</span><span class="ln t-banner">\___/\____/\____/_/|_|\___/\__,_/(_)____/_/ /_/</span><span class="ln"></span><span class="ln t-dim">  Am I Cooked? — Local AI Security Scanner v1.2.1</span><span class="ln t-dim">  https://iscooked.com</span><span class="ln"></span><span class="ln t-cyan t-bold">  Scanning your setup...</span><span class="ln"></span><span class="ln t-dim">──────────────────────────────────────────────────────────────</span><span class="ln"></span><span class="ln t-bold">  [01] Network Exposure</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-red">🔥 COOKED</span>  Unidentified service on port 8000 (commonly vLLM) is listening on ALL interfaces</span><span class="ln">  <span class="t-green">✅ SAFE</span>  Unidentified service on port 1234 (commonly LM Studio) is bound to localhost only</span><span class="ln"></span><span class="ln t-bold">  [02] API Authentication</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-yellow">⚠  WARMING UP</span>  Ollama /api/tags on port 11434 accessible without authentication on localhost; other routes were not tested</span><span class="ln"></span><span class="ln t-bold">  [03] Model File Permissions</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-red">🔥 COOKED</span>  Files in /srv/models are world-writable!</span><span class="ln"></span><span class="ln t-bold">  [04] Docker / Container Risks</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-green">✅ SAFE</span>  Container 'open-webui' is running as user 'app'</span><span class="ln">  <span class="t-yellow">⚠  WARMING UP</span>  Container 'open-webui' is using host networking</span><span class="ln"></span><span class="ln t-bold">  [05] GPU Driver Exposure</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-dim">⏭  SKIP</span>  No GPU devices detected</span><span class="ln"></span><span class="ln t-bold">  [06] Telemetry / Phoning Home</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-dim">⏭  SKIP</span>  No supported opt-out evidence found</span><span class="ln"></span><span class="ln t-bold">  [07] Firewall Status</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-green">✅ SAFE</span>  UFW firewall is active</span><span class="ln"></span><span class="ln t-dim">  [08–16] 9 more areas skipped in this example</span><span class="ln"></span><span class="ln t-dim">──────────────────────────────────────────────────────────────</span><span class="ln t-bold">  YOUR COOKED SCORE</span><span class="ln"></span><span class="ln">  <span class="t-heat">28%</span> <span class="t-dim">cooked</span>  [<span class="t-red">▒▒▒▒▒▒▒▒▒▒▒                             </span>]</span><span class="ln"></span><span class="ln t-heat">  SLIGHTLY WARM</span><span class="ln"></span><span class="ln">  <span class="t-red t-bold">2</span> critical  <span class="t-yellow t-bold">2</span> warnings  <span class="t-green t-bold">3</span> passed</span><span class="ln">  <span class="t-cyan">0</span> unknown  <span class="t-dim">11 skipped  (18 results)</span></span><span class="ln"></span><span class="ln t-red">  Fix critical findings first.</span><span class="ln"></span><span class="ln"><span class="t-prompt">~</span> $ <span class="caret"></span></span></pre>
+          <pre class="terminal-body" tabindex="0" aria-label="Example scanner output"><span class="ln"><span class="t-prompt">~</span> $ <span class="t-cmd">bash iscooked.com</span></span><span class="ln"></span><span class="ln t-banner">                    __            __       __</span><span class="ln t-banner">  _________  ____  / /_____  ____/ /  ____/ /_</span><span class="ln t-banner"> / ___/ __ \/ __ \/ //_/ _ \/ __  /  / ___/ __ \</span><span class="ln t-banner">/ /__/ /_/ / /_/ / ,&lt; /  __/ /_/ /_ (__  ) / / /</span><span class="ln t-banner">\___/\____/\____/_/|_|\___/\__,_/(_)____/_/ /_/</span><span class="ln"></span><span class="ln t-dim">  Am I Cooked? — Local AI Security Scanner v1.2.1</span><span class="ln t-dim">  https://iscooked.com</span><span class="ln"></span><span class="ln t-cyan t-bold">  Scanning your setup...</span><span class="ln"></span><span class="ln t-dim">──────────────────────────────────────────────────────────────</span><span class="ln"></span><span class="ln t-bold">  [01] Network Exposure</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-red">🔥 COOKED</span>  Unidentified service on port 8000 (commonly vLLM) is listening on ALL interfaces</span><span class="ln">  <span class="t-green">✅ SAFE</span>  Unidentified service on port 1234 (commonly LM Studio) is bound to localhost only</span><span class="ln"></span><span class="ln t-bold">  [02] API Authentication</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-yellow">⚠  WARMING UP</span>  Ollama /api/tags on port 11434 accessible without authentication on localhost; other routes were not tested</span><span class="ln"></span><span class="ln t-bold">  [03] Model File Permissions</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-red">🔥 COOKED</span>  Files in /srv/models are world-writable!</span><span class="ln"></span><span class="ln t-bold">  [04] Docker / Container Risks</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-green">✅ SAFE</span>  Container 'open-webui' is running as user 'app'</span><span class="ln">  <span class="t-yellow">⚠  WARMING UP</span>  Container 'open-webui' is using host networking</span><span class="ln"></span><span class="ln t-bold">  [05] GPU Driver Exposure</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-dim">⏭  SKIP</span>  No GPU devices detected</span><span class="ln"></span><span class="ln t-bold">  [06] Telemetry / Phoning Home</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-dim">⏭  SKIP</span>  No supported opt-out evidence found</span><span class="ln"></span><span class="ln t-bold">  [07] Firewall Status</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-green">✅ SAFE</span>  UFW firewall is active</span><span class="ln"></span><span class="ln t-dim">  [08–17] 10 more areas skipped in this example</span><span class="ln"></span><span class="ln t-dim">──────────────────────────────────────────────────────────────</span><span class="ln t-bold">  YOUR COOKED SCORE</span><span class="ln"></span><span class="ln">  <span class="t-heat">28%</span> <span class="t-dim">cooked</span>  [<span class="t-red">▒▒▒▒▒▒▒▒▒▒▒                             </span>]</span><span class="ln"></span><span class="ln t-heat">  SLIGHTLY WARM</span><span class="ln"></span><span class="ln">  <span class="t-red t-bold">2</span> critical  <span class="t-yellow t-bold">2</span> warnings  <span class="t-green t-bold">3</span> passed</span><span class="ln">  <span class="t-cyan">0</span> unknown  <span class="t-dim">12 skipped  (19 results)</span></span><span class="ln"></span><span class="ln t-red">  Fix critical findings first.</span><span class="ln"></span><span class="ln"><span class="t-prompt">~</span> $ <span class="caret"></span></span></pre>
           <figcaption class="terminal-foot">Example data. This page does not scan your device.</figcaption>
         </figure>
         </div>
@@ -121,7 +121,7 @@
         <div class="section-intro">
           <div>
             <span class="eyebrow">What it examines</span>
-            <h2 id="coverage-heading">Sixteen places<br />things go wrong.</h2>
+            <h2 id="coverage-heading">Seventeen places<br />things go wrong.</h2>
           </div>
           <p class="lead">
             Each check reports what it saw and what it could not see. A skipped
@@ -140,7 +140,7 @@
               Containers &amp; hardware<span aria-hidden="true">3 checks</span>
             </button>
             <button type="button" data-category="agents" aria-pressed="false" aria-controls="coverage-agents">
-              Agents &amp; models<span aria-hidden="true">6 checks</span>
+              Agents &amp; models<span aria-hidden="true">7 checks</span>
             </button>
           </div>
           <div class="coverage-content">
@@ -292,7 +292,7 @@
               <details class="check">
                 <summary>
                   <span class="check-number">04.4</span
-                  ><span><strong>OpenClaw gateway</strong><span class="check-description">Examine authentication and tool settings for selected OpenClaw CLI versions.</span></span>
+                  ><span><strong>OpenClaw gateway</strong><span class="check-description">Examine authentication and tool settings for OpenClaw CLI 2026.9.3 and later.</span></span>
                 </summary>
                 <div class="check-detail">
                   The check reads the OpenClaw CLI version and selected global
@@ -303,7 +303,7 @@
               <details class="check">
                 <summary>
                   <span class="check-number">04.5</span
-                  ><span><strong>Remote model code</strong><span class="check-description">Find remote-code flags in active vLLM and TGI commands.</span></span>
+                  ><span><strong>Remote model code</strong><span class="check-description">Find remote-code flags in active vLLM, TGI, and SGLang commands.</span></span>
                 </summary>
                 <div class="check-detail">
                   The check examines recognized launch arguments. It does not
@@ -318,6 +318,17 @@
                 <div class="check-detail">
                   Examines supported environment variables and exact hosts-file
                   entries. It does not analyze active telemetry traffic.
+                </div>
+              </details>
+              <details class="check">
+                <summary>
+                  <span class="check-number">04.7</span
+                  ><span><strong>Runtime versions</strong><span class="check-description">Flag Ollama, vLLM, and LiteLLM proxy versions with known advisories.</span></span>
+                </summary>
+                <div class="check-detail">
+                  Reads one version route per runtime on its default port and
+                  compares it with a reviewed minimum. A current version does not
+                  rule out advisories published after the review date.
                 </div>
               </details>
             </div>
@@ -432,7 +443,7 @@
   <span class="t-heat">SLIGHTLY WARM</span>
 
   <span class="t-red t-bold">2</span> critical  <span class="t-yellow t-bold">2</span> warnings  <span class="t-green t-bold">3</span> passed
-  <span class="t-cyan">0</span> unknown  <span class="t-dim">11 skipped  (18 results)</span>
+  <span class="t-cyan">0</span> unknown  <span class="t-dim">12 skipped  (19 results)</span>
 
   <span class="t-red">Fix critical findings first.</span></pre>
               <p class="sim-explain" id="sim-explain">

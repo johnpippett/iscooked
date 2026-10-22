@@ -14,7 +14,8 @@ SCANNER = ROOT / "iscooked"
 CHECKS = (
     "network_exposure api_auth model_permissions docker_risks gpu_exposure "
     "telemetry firewall ssl_tls processes sensitive_files history_logs "
-    "ollama_config browser_debugging mcp_config agent_gateway model_code_execution"
+    "ollama_config browser_debugging mcp_config agent_gateway model_code_execution "
+    "runtime_versions"
 ).split()
 
 
@@ -76,16 +77,16 @@ def test_silent_checks_get_distinct_skip_records_and_coverage():
         "warning": 0,
         "passed": 0,
         "unknown": 0,
-        "skipped": 16,
-        "total": 16,
+        "skipped": 17,
+        "total": 17,
     }
     assert report["coverage"] == {
-        "areas_started": 16,
+        "areas_started": 17,
         "areas_with_observations": 0,
         "areas_with_unknown": 0,
-        "areas_with_skips": 16,
+        "areas_with_skips": 17,
     }
-    assert len(report["findings"]) == 16
+    assert len(report["findings"]) == 17
     assert all(item["status"] == "skipped" for item in report["findings"])
 
 
@@ -102,10 +103,10 @@ def test_coverage_counts_distinct_areas_and_keeps_all_statuses():
     report = json.loads(result.stdout)
     assert report["summary"]["status"] == "critical"
     assert report["coverage"] == {
-        "areas_started": 16,
+        "areas_started": 17,
         "areas_with_observations": 2,
         "areas_with_unknown": 1,
-        "areas_with_skips": 13,
+        "areas_with_skips": 14,
     }
     assert {item["status"] for item in report["findings"]} == {
         "critical",
@@ -156,8 +157,8 @@ def test_all_observed_safe_areas_can_report_no_findings():
     report = json.loads(result.stdout)
     assert report["summary"]["status"] == "no_findings"
     assert report["coverage"] == {
-        "areas_started": 16,
-        "areas_with_observations": 16,
+        "areas_started": 17,
+        "areas_with_observations": 17,
         "areas_with_unknown": 0,
         "areas_with_skips": 0,
     }

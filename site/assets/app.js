@@ -149,7 +149,7 @@
   }
 
   // ─── Doneness simulator ───────────────────────────────
-  const counts = { critical: 2, warning: 2, unknown: 0, passed: 3, skipped: 11 };
+  const counts = { critical: 2, warning: 2, unknown: 0, passed: 3, skipped: 12 };
   const KEYS = ["critical", "warning", "unknown", "passed", "skipped"];
   const COLOR_CLASS = { red: "t-red", yellow: "t-yellow", cyan: "t-cyan", green: "t-green" };
   const INK_CLASS = { red: "ink-red", yellow: "ink-yellow", cyan: "ink-cyan", green: "ink-green" };

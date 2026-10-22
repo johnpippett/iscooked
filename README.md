@@ -81,11 +81,11 @@ A critical finding or warning can change a low-score verdict to `SLIGHTLY WARM`.
 
 ## What it checks
 
-The scanner has 16 check areas:
+The scanner has 17 check areas:
 
 | ID | Check area | Looks for |
 |---:|---|---|
-| 01 | Network Exposure | Common AI service ports and listener bind addresses. |
+| 01 | Network Exposure | Common AI service ports and listener bind addresses, including SGLang, the LiteLLM proxy, and the llama.cpp RPC server. |
 | 02 | API Authentication | Authentication on selected model-list routes for identified Ollama, LM Studio, and vLLM services. |
 | 03 | Model File Permissions | World-readable or world-writable files in common model directories. |
 | 04 | Docker / Container Risks | Root users, privileged mode, host networking, daemon sockets, and host-root mounts. |
@@ -99,8 +99,9 @@ The scanner has 16 check areas:
 | 12 | Ollama-Specific Checks | `OLLAMA_HOST`, `OLLAMA_ORIGINS`, and selected service settings. |
 | 13 | Browser Remote Debugging | Chromium-family debugging flags, listeners, and `/json/version` metadata. |
 | 14 | MCP Configuration | Selected Model Context Protocol client files, filesystem grants, and permissions. |
-| 15 | Agent Gateway Configuration | Selected OpenClaw settings when the installed CLI has a reviewed version. |
-| 16 | Remote Model Code | Remote-code flags in recognized vLLM and Text Generation Inference launches. |
+| 15 | Agent Gateway Configuration | Selected OpenClaw settings when the installed CLI is 2026.9.3 or later. |
+| 16 | Remote Model Code | Remote-code flags in recognized vLLM, Text Generation Inference, and SGLang launches. |
+| 17 | Runtime Versions | Ollama, vLLM, and LiteLLM proxy versions below the minimum that fixes reviewed advisories. |
 
 ## Unknown and skipped results
 
@@ -178,9 +179,11 @@ Most file checks use Unix mode bits. They do not establish access through every 
 
 The telemetry check reads values in the scanner environment and known host mappings. It does not establish the environment of a running service or analyze outbound traffic. `OLLAMA_NO_CLOUD` false values do not establish an opt-out. The Ollama check separates scanner variables from active service settings.
 
-MCP and OpenClaw checks cover selected files and supported JSON settings. For OpenClaw, the scanner runs `openclaw --version` with a 1.5-second limit. It accepts at most 256 output bytes. Versions `2026.9.3` through `2026.9.6` can use the selected config checks. A command outside the scanner's fixed search path, a failed command, or another version gives `UNKNOWN`. The CLI version does not prove the version of a running gateway. JSON5, includes, interpolation, overrides, and policy enforcement remain incomplete.
+MCP and OpenClaw checks cover selected files and supported JSON settings. For OpenClaw, the scanner runs `openclaw --version` with a 1.5-second limit. It accepts at most 256 output bytes. Version `2026.9.3` and later can use the selected config checks. A command outside the scanner's fixed search path, a failed command, or an older version gives `UNKNOWN`. The parser is strict, so a newer release that adds unrecognized settings also gives `UNKNOWN`. The CLI version does not prove the version of a running gateway. JSON5, includes, interpolation, overrides, and policy enforcement remain incomplete.
 
-Remote model-code checks cover recognized vLLM and Text Generation Inference command lines. They do not inspect configuration files, environment variables, or other runtimes. A model weights revision does not prove an executable code pin.
+Remote model-code checks cover recognized vLLM, Text Generation Inference, and SGLang command lines. They do not inspect configuration files, environment variables, or other runtimes. A model weights revision does not prove an executable code pin.
+
+Runtime version checks read `/api/version` on Ollama port `11434`, `/version` on vLLM port `8000`, and `/health/readiness` on LiteLLM proxy port `4000`. Each probe is one bounded GET with the same limits as the API checks. vLLM also needs its process name or its `/v1/models` owner before its version is trusted. The minimums cover advisories reviewed on 2026-10-22: Ollama `0.35.0`, vLLM `0.14.1`, and LiteLLM `1.83.14`. An outdated version on a non-loopback listener is critical; on localhost it is a warning. LiteLLM 1.84 and later do not publish their version on the public readiness route, so the check skips them. A version at or above the minimum does not rule out later advisories.
 
 Docker checks inspect known socket paths, the active Unix daemon endpoint, and host-root mounts. A read-only Docker socket mount can still permit daemon API calls. Rootless, proxy, and uncertain access can remain warning or unknown results.
 
