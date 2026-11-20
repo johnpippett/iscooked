@@ -2361,11 +2361,12 @@ LiteLLM proxy|4000|/health/readiness|1.83.14|CVE-2026-42208, CVE-2026-47101 and 
 
 # LiteLLM releases published to PyPI with credential-stealing malware: 1.82.7 and
 # 1.82.8 (March 2026, PYSEC-2026-2) and 1.107.0 (October 21, 2026, also pushed as
-# the v1.107.0 Docker images). 1.106.2 is the last clean release named by both
-# October write-ups. Exact matches only; 1.107.0rc1 and rc2 were not affected.
+# the v1.107.0 Docker images). Exact matches only; 1.107.0rc1 and rc2 were not
+# affected by this compromise.
 LITELLM_COMPROMISED_RELEASES="1.82.7 1.82.8 1.107.0"
 LITELLM_COMPROMISED_IMAGE_TAGS="v1.107.0"
-LITELLM_CLEAN_RELEASE="1.106.2"
+# 1.106.9 fixes GHSA-2rwg-2wh4-7c4f and includes the GHSA-w4c7-34wj-hqm8 fix.
+LITELLM_RECOVERY_GUIDANCE="a verified patched release (1.106.9 or later on the 1.106 branch)"
 
 # Print "version<TAB>X.Y.Z<TAB>exact|suffixed|prerelease<TAB>shown", "unparsed",
 # "absent" (LiteLLM readiness without a version field) or "other" from a bounded
@@ -2636,7 +2637,7 @@ check_runtime_versions() {
         case "$state" in
             version)
                 if [[ "$service" == "LiteLLM proxy" && "$exact" == exact ]] && litellm_release_compromised "$version"; then
-                    result_cooked "${label} reports ${version}, a release published with credential-stealing malware; treat the host as compromised, rotate its provider keys and master key, and redeploy ${LITELLM_CLEAN_RELEASE}"
+                    result_cooked "${label} reports ${version}, a release published with credential-stealing malware; treat the host as compromised, rotate its provider keys and master key, and redeploy ${LITELLM_RECOVERY_GUIDANCE}"
                 elif [[ "$service" == Ollama && "$version" == "0.0.0" ]]; then
                     result_unknown "${label} reports development build 0.0.0; confirm it includes fixes for ${advisories}"
                 elif version_below "$version" "$minimum" || { [[ "$exact" == prerelease ]] && ! version_below "$minimum" "$version"; }; then
@@ -2671,10 +2672,10 @@ check_runtime_versions() {
         esac
     done <<< "$findings"
     if [[ "$ioc_count" -gt 0 ]]; then
-        result_cooked "LiteLLM supply-chain malware file found: ${first_ioc}$( [[ "$ioc_count" -le 1 ]] || printf ' (+%s more)' "$((ioc_count - 1))" ); treat this machine as compromised, stop the loader, remove the files, reinstall ${LITELLM_CLEAN_RELEASE} and rotate every credential it could reach"
+        result_cooked "LiteLLM supply-chain malware file found: ${first_ioc}$( [[ "$ioc_count" -le 1 ]] || printf ' (+%s more)' "$((ioc_count - 1))" ); treat this machine as compromised, stop the loader, remove the files, reinstall ${LITELLM_RECOVERY_GUIDANCE} and rotate every credential it could reach"
     fi
     if [[ "$bad_count" -gt 0 ]]; then
-        result_cooked "Compromised LiteLLM release ${first_bad}$( [[ "$bad_count" -le 1 ]] || printf ' (+%s more)' "$((bad_count - 1))" ): published with credential-stealing malware; reinstall ${LITELLM_CLEAN_RELEASE} and rotate every credential this machine could reach"
+        result_cooked "Compromised LiteLLM release ${first_bad}$( [[ "$bad_count" -le 1 ]] || printf ' (+%s more)' "$((bad_count - 1))" ): published with credential-stealing malware; reinstall ${LITELLM_RECOVERY_GUIDANCE} and rotate every credential this machine could reach"
     fi
     if [[ "$ioc_count" -eq 0 && "$bad_count" -eq 0 && -n "$ok_versions" ]]; then
         result_safe "LiteLLM ${ok_versions} found in common Python environments; not a compromised release (${LITELLM_COMPROMISED_RELEASES// /, })"

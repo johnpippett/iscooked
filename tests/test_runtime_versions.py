@@ -149,7 +149,7 @@ def test_litellm_proxy_reporting_compromised_release_is_cooked_even_on_localhost
     assert f'SCORE={score}' in r.stdout_plain
     if score:
         assert 'credential-stealing malware' in r.stdout_plain
-        assert '1.106.2' in r.stdout_plain
+        assert 'redeploy a verified patched release (1.106.9' in r.stdout_plain
 
 
 def test_hidden_litellm_version_mentions_compromised_releases():
@@ -218,11 +218,12 @@ def test_marker_file_in_temp_dir_is_cooked(tmp_path):
 def test_installed_compromised_release_is_cooked(tmp_path, entry):
     r, _ = local_scan(tmp_path, [(f'.venv/lib/python3.11/site-packages/{entry}', None)])
     assert 'Compromised LiteLLM release' in r.stdout_plain
+    assert 'reinstall a verified patched release (1.106.9' in r.stdout_plain
     assert 'SCORE=10' in r.stdout_plain
 
 
 @pytest.mark.parametrize('entry', ['litellm-1.106.2.dist-info', 'litellm-1.107.0rc1.dist-info'])
-def test_installed_clean_release_is_safe(tmp_path, entry):
+def test_installed_release_not_on_malware_list(tmp_path, entry):
     r, _ = local_scan(tmp_path, [(f'{SITE}/{entry}', None)])
     assert 'not a compromised release' in r.stdout_plain
     assert 'nothing to check' not in r.stdout_plain
