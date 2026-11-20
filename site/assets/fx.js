@@ -93,7 +93,7 @@ function chromeProps(canvas, kind) {
 async function loadLibrary() {
   if (!("gpu" in navigator)) return null;
   try {
-    const lib = await import("./vendor/shaders-4.0.0.js");
+    const lib = await import("./vendor/shaders-4.0.7.js");
     if (!(await lib.isWebGPUSupported())) return null;
     const gpu = await lib.createSharedDevice().catch(() => undefined);
     return { lib, gpu };
