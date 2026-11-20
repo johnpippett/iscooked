@@ -2354,10 +2354,10 @@ check_model_code_execution() {
 
 # Minimum versions that fix the reviewed advisories. Refresh this table and the
 # reviewed date when new advisories land: service|port|route|minimum|advisories
-RUNTIME_VERSIONS_REVIEWED="2026-10-22"
+RUNTIME_VERSIONS_REVIEWED="2026-11-20"
 RUNTIME_MIN_VERSIONS="Ollama|11434|/api/version|0.35.0|CVE-2026-103663, CVE-2026-108836
-vLLM|8000|/version|0.14.1|CVE-2026-22778
-LiteLLM proxy|4000|/health/readiness|1.83.14|CVE-2026-42208, CVE-2026-47101 and related"
+vLLM|8000|/version|0.34.0|CVE-2026-115912, CVE-2026-115917, GHSA-xgh8-qwjh-q853 and related
+LiteLLM proxy|4000|/health/readiness|1.84.0|CVE-2026-49468, CVE-2026-59822 and related"
 
 # LiteLLM releases published to PyPI with credential-stealing malware: 1.82.7 and
 # 1.82.8 (March 2026, PYSEC-2026-2) and 1.107.0 (October 21, 2026, also pushed as
@@ -2652,7 +2652,7 @@ check_runtime_versions() {
                     result_safe "${label} reports ${shown}, at or above ${minimum} (advisories reviewed ${RUNTIME_VERSIONS_REVIEWED})"
                 fi ;;
             absent)
-                result_skip "${label} does not publish its version on ${route}; run litellm --version and confirm ${minimum} or later, and not ${LITELLM_COMPROMISED_RELEASES// /, }" ;;
+                result_skip "${label} does not publish its version on ${route}; check the deployed version against LiteLLM security advisories and rule out ${LITELLM_COMPROMISED_RELEASES// /, }" ;;
             unparsed)
                 result_unknown "${label}: version string not recognized; confirm ${minimum} or later (${advisories})" ;;
             *)
