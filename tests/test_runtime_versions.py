@@ -71,19 +71,26 @@ def test_vllm_needs_process_or_model_owner():
         '/version': {'version': '0.10.0'},
         '/v1/models': {'object': 'list', 'data': [{'id': 'm', 'owned_by': 'vllm'}]},
     })
-    assert 'older than 0.14.1' in by_owner.stdout_plain
+    assert 'older than 0.34.0' in by_owner.stdout_plain
     assert 'SCORE=4' in by_owner.stdout_plain
 
 
-@pytest.mark.parametrize('version,score', [('0.14.0', 4), ('0.14.1+cu129', 0), ('0.26.0', 0)])
+@pytest.mark.parametrize('version,score', [('0.14.1', 4), ('0.33.0', 4), ('0.34.0+cu129', 0), ('0.35.0', 0)])
 def test_vllm_threshold(version, score):
     r = probe(port=8000, process='vllm', route_bodies={'/version': {'version': version}})
     assert f'SCORE={score}' in r.stdout_plain
 
 
+def test_outdated_vllm_beyond_localhost_reports_advisory():
+    r = probe(port=8000, process='vllm', host='0.0.0.0', route_bodies={'/version': {'version': '0.31.0'}})
+    assert 'CVE-2026-115912' in r.stdout_plain
+    assert 'listens beyond localhost' in r.stdout_plain
+    assert 'SCORE=10' in r.stdout_plain
+
+
 @pytest.mark.parametrize('body,word,score', [
-    ({'status': 'healthy', 'db': 'connected', 'litellm_version': '1.83.6'}, 'older than 1.83.14', 4),
-    ({'status': 'healthy', 'db': 'connected', 'litellm_version': '1.83.14'}, 'at or above 1.83.14', 0),
+    ({'status': 'healthy', 'db': 'connected', 'litellm_version': '1.83.14'}, 'CVE-2026-59822', 4),
+    ({'status': 'healthy', 'db': 'connected', 'litellm_version': '1.84.0'}, 'at or above 1.84.0', 0),
 ])
 def test_litellm_version_from_readiness(body, word, score):
     r = probe(port=4000, process='python3', route_bodies={'/health/readiness': body})
@@ -94,6 +101,7 @@ def test_litellm_version_from_readiness(body, word, score):
 def test_litellm_hidden_version_is_skip_not_safe():
     r = probe(port=4000, process='litellm', route_bodies={'/health/readiness': {'status': 'healthy', 'db': 'connected'}})
     assert 'does not publish its version' in r.stdout_plain
+    assert 'check the deployed version against LiteLLM security advisories' in r.stdout_plain
     assert 'SAFE' not in r.stdout_plain
     assert 'SCORE=0' in r.stdout_plain
 
@@ -269,21 +277,21 @@ def test_ollama_prerelease_of_minimum_is_older(version, score):
 
 
 @pytest.mark.parametrize('version,score', [
-    ('0.14.1rc1', 4), ('0.14.1a2', 4), ('0.14.1b1', 4), ('0.14.1.dev42+g1234abc', 4),
-    ('0.14.1rc1+cu129', 4), ('0.14.1+cu129', 0), ('0.14.1.post1', 0), ('0.14.2rc1', 0),
+    ('0.34.0rc1', 4), ('0.34.0a2', 4), ('0.34.0b1', 4), ('0.34.0.dev42+g1234abc', 4),
+    ('0.34.0rc1+cu129', 4), ('0.34.0+cu129', 0), ('0.34.0.post1', 0), ('0.34.1rc1', 0),
 ])
 def test_vllm_prerelease_of_minimum_is_older(version, score):
     r = probe(port=8000, process='vllm', route_bodies={'/version': {'version': version}})
     assert f'SCORE={score}' in r.stdout_plain
     if score:
-        assert f'{version}, older than 0.14.1' in r.stdout_plain
+        assert f'{version}, older than 0.34.0' in r.stdout_plain
 
 
 def test_litellm_prerelease_of_minimum_is_older():
     r = probe(port=4000, process='litellm', route_bodies={
-        '/health/readiness': {'status': 'healthy', 'db': 'connected', 'litellm_version': '1.83.14rc1'},
+        '/health/readiness': {'status': 'healthy', 'db': 'connected', 'litellm_version': '1.84.0rc1'},
     })
-    assert 'older than 1.83.14' in r.stdout_plain
+    assert 'older than 1.84.0' in r.stdout_plain
     assert 'SCORE=4' in r.stdout_plain
 
 
