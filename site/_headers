@@ -9,7 +9,7 @@
   Content-Type: text/plain; charset=utf-8
   X-Content-Type-Options: nosniff
 
-/assets/iscooked-logo-256-v1.webp
+/assets/*
   Cache-Control: public, max-age=31536000, immutable
 
 /report
@@ -21,9 +21,3 @@
   Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff
-
-/assets/fonts/*
-  Cache-Control: public, max-age=31536000, immutable
-
-/assets/vendor/*
-  Cache-Control: public, max-age=31536000, immutable
