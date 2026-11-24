@@ -111,6 +111,7 @@ main
         # Keep full-scanner fixtures away from the caller's home and checkout.
         # Tests that need a specific HOME can still provide it explicitly.
         test_env["HOME"] = default_home
+        test_env["ISCOOKED_TEST_UFW_CONF"] = os.path.join(tmpdir, "no-ufw.conf")
         if env_vars:
             test_env.update(env_vars)
 
@@ -174,6 +175,7 @@ OS_TYPE="${{ISCOOKED_TEST_OS_TYPE:-linux}}"
         # Keep function fixtures away from the caller's home and checkout.
         # Tests that need a specific HOME can still provide it explicitly.
         test_env["HOME"] = default_home
+        test_env["ISCOOKED_TEST_UFW_CONF"] = os.path.join(tmpdir, "no-ufw.conf")
         if env_vars:
             test_env.update(env_vars)
 
@@ -744,6 +746,7 @@ def linux_firewall_mocks(**overrides):
             'echo "target     prot opt source               destination"'
         ),
         "nft": "exit 0",
+        "systemctl": "exit 3",
         "uname": "echo Linux",
     }
     mocks.update(overrides)

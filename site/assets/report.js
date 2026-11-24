@@ -23,7 +23,7 @@
 
   const EXAMPLE = {
     schema_version: 1,
-    scanner: { name: "iscooked", version: "1.4.0" },
+    scanner: { name: "iscooked", version: "1.4.1" },
     platform: "linux",
     completed: true,
     summary: {

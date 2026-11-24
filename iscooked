@@ -10,7 +10,7 @@ set -euo pipefail
 PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 export PATH
 
-VERSION="1.4.0"
+VERSION="1.4.1"
 
 # ─── Colors & Formatting ───────────────────────────────────────────────────────
 
@@ -2587,7 +2587,7 @@ check_firewall() {
     # A missing host firewall matters most when an AI service is reachable
     # beyond localhost. Backend states are gathered first, then reported as one
     # result whose severity follows that exposure.
-    local has_firewall=false
+    local has_firewall=false ufw_failed=false
     local inactive=() failed=()
 
     if [[ "$OS_TYPE" == macos ]]; then
@@ -2595,29 +2595,6 @@ check_firewall() {
             failed+=("no supported firewall inspection tool is available")
         fi
     else
-        # Check unprivileged Linux firewall state first before privileged commands.
-        if command_exists systemctl; then
-            if systemctl is-active --quiet ufw 2>/dev/null; then
-                result_safe "UFW firewall service is active"
-                has_firewall=true
-            elif systemctl is-active --quiet firewalld 2>/dev/null; then
-                result_safe "firewalld service is active"
-                has_firewall=true
-            elif systemctl is-active --quiet nftables 2>/dev/null; then
-                result_safe "nftables service is active"
-                has_firewall=true
-            elif systemctl is-active --quiet iptables 2>/dev/null; then
-                result_safe "iptables service is active"
-                has_firewall=true
-            fi
-        fi
-        if [[ "$has_firewall" == "false" && -r /etc/ufw/ufw.conf ]] \
-            && grep -Eq '^[[:space:]]*ENABLED[[:space:]]*=[[:space:]]*yes([[:space:]]|$|#)' /etc/ufw/ufw.conf 2>/dev/null; then
-            result_safe "UFW firewall is enabled (/etc/ufw/ufw.conf)"
-            has_firewall=true
-        fi
-        [[ "$has_firewall" == "true" ]] && return
-
         if ! command_exists ufw && ! command_exists firewall-cmd && ! command_exists iptables && ! command_exists nft; then
             failed+=("no supported firewall inspection tool is available")
         fi
@@ -2659,6 +2636,7 @@ check_firewall() {
             local ufw_status
             if ! ufw_status=$(ufw status 2>/dev/null); then
                 failed+=("UFW status inspection failed")
+                ufw_failed=true
             elif echo "$ufw_status" | grep -Eqi "^Status:[[:space:]]+active$"; then
                 result_safe "UFW firewall is active"
                 has_firewall=true
@@ -2725,6 +2703,30 @@ check_firewall() {
 
     # An active firewall settles it; other backends' states don't change that.
     [[ "$has_firewall" == "true" ]] && return
+
+    # Unprivileged Linux fallback when direct firewall commands lacked privileges.
+    # Avoid `systemctl is-active ufw` because Debian/Ubuntu's oneshot ufw.service
+    # stays "active (exited)" even when UFW is disabled (ENABLED=no).
+    if [[ "$OS_TYPE" != "macos" && "${#failed[@]}" -gt 0 ]]; then
+        local ufw_conf="${ISCOOKED_TEST_UFW_CONF:-/etc/ufw/ufw.conf}"
+        if [[ "$ufw_failed" == "true" && -r "$ufw_conf" ]] \
+            && grep -Eq '^[[:space:]]*ENABLED[[:space:]]*=[[:space:]]*yes([[:space:]]|$|#)' "$ufw_conf" 2>/dev/null; then
+            result_safe "UFW firewall is enabled (/etc/ufw/ufw.conf)"
+            return
+        fi
+        if command_exists systemctl; then
+            if systemctl is-active --quiet firewalld 2>/dev/null; then
+                result_safe "firewalld service is active"
+                return
+            elif systemctl is-active --quiet nftables 2>/dev/null; then
+                result_safe "nftables service is active"
+                return
+            elif systemctl is-active --quiet iptables 2>/dev/null; then
+                result_safe "iptables service is active"
+                return
+            fi
+        fi
+    fi
 
     local details="" item
     for item in ${inactive[@]+"${inactive[@]}"} ${failed[@]+"${failed[@]}"}; do
