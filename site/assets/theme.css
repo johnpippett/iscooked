@@ -1102,42 +1102,59 @@ summary::-webkit-details-marker {
 /* ─── Report plate teaser ────────────────────────────── */
 .plate {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
   gap: 56px;
   align-items: center;
 }
+.plate-copy {
+  min-width: 0;
+}
 .plate .lead {
-  margin-top: 24px;
+  margin-top: 22px;
 }
-.plate-steps {
-  display: grid;
-  gap: 10px;
-  margin: 30px 0;
-  padding: 0;
-  list-style: none;
-}
-.plate-steps li {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  gap: 12px;
-  align-items: baseline;
-}
-.plate-steps li > span {
-  color: var(--accent);
-  font: 11px var(--mono);
-}
-.plate-steps code {
-  padding: 2px 6px;
-  border-radius: 3px;
+.plate-cmd {
+  margin: 24px 0 26px;
+  padding: 12px 15px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
   background: var(--surface);
-  overflow-wrap: anywhere;
+  font: 12px/1.6 var(--mono);
+  overflow-x: auto;
+}
+.plate-cmd code::before {
+  content: "$ ";
+  color: var(--accent);
 }
 .plate-preview {
   min-width: 0;
-  padding: 24px;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: var(--surface);
+  background: var(--bg);
+  box-shadow: 0 20px 44px -32px color-mix(in srgb, var(--ink) 28%, transparent);
+}
+.plate-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  background: var(--term-bg);
+  color: var(--term-fg);
+  font: 11px/1.4 var(--mono);
+}
+.plate-file {
+  color: var(--term-muted);
+}
+.plate-score {
+  color: var(--critical);
+  letter-spacing: 0.04em;
+}
+.plate-score b {
+  font-weight: 700;
+}
+.plate-rows {
+  padding: 6px 20px;
 }
 .plate-row {
   display: grid;
@@ -1150,6 +1167,29 @@ summary::-webkit-details-marker {
 }
 .plate-row:last-child {
   border-bottom: 0;
+}
+.plate-hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font: 11.5px/1.5 var(--mono);
+  overflow-wrap: anywhere;
+}
+.plate-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 20px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+}
+.plate-foot svg {
+  width: 15px;
+  height: 15px;
+  color: var(--passed-ink);
+  flex-shrink: 0;
 }
 
 /* Status pills are shared with the report viewer. */
@@ -1182,6 +1222,10 @@ summary::-webkit-details-marker {
 }
 
 /* ─── Install ────────────────────────────────────────── */
+.install-band {
+  background: var(--surface);
+  border-block: 1px solid var(--line);
+}
 .install {
   display: grid;
   grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
@@ -1311,8 +1355,9 @@ summary::-webkit-details-marker {
 .requirements {
   margin-top: 16px;
   padding: 18px 20px;
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: var(--surface);
+  background: var(--bg);
   color: var(--muted);
   font-size: 13px;
   line-height: 1.7;
@@ -1335,7 +1380,6 @@ summary::-webkit-details-marker {
 /* ─── FAQ ────────────────────────────────────────────── */
 .faq {
   padding-block: 64px 90px;
-  border-top: 1px solid var(--line);
 }
 .faq h2 {
   margin-bottom: 36px;
@@ -1584,6 +1628,9 @@ canvas.chrome-bezel {
     grid-template-columns: 1fr;
     gap: 40px;
   }
+  .plate-copy {
+    order: -1;
+  }
   .enhanced .coverage-layout {
     grid-template-columns: 230px minmax(0, 1fr);
     gap: 28px;
@@ -1710,8 +1757,10 @@ canvas.chrome-bezel {
     margin-right: 6px;
     font-size: 13px;
   }
-  .plate-preview {
-    padding: 16px;
+  .plate-head,
+  .plate-rows,
+  .plate-foot {
+    padding-inline: 16px;
   }
   .plate-row {
     grid-template-columns: 1fr;

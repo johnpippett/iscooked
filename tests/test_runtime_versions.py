@@ -29,7 +29,7 @@ def probe(port=11434, route_bodies=None, status='200', process='ollama', host='1
     ('0.34.1', 'older than 0.35.0', 4),
     ('0.35.0', 'at or above 0.35.0', 0),
     ('0.40.2', 'at or above 0.35.0', 0),
-    ('0.0.0', 'development build', 4),
+    ('0.0.0', 'development build', 0),
 ])
 def test_ollama_version_outcomes_on_localhost(version, word, score):
     r = probe(route_bodies={'/api/version': {'version': version}})
@@ -60,7 +60,7 @@ def test_generic_version_payload_is_not_ollama():
 def test_ollama_process_without_version_is_unknown():
     r = probe(status='500', route_bodies={'/api/version': {'error': 'x'}})
     assert 'version unavailable (HTTP 500)' in r.stdout_plain
-    assert 'SCORE=4' in r.stdout_plain
+    assert 'SCORE=0' in r.stdout_plain
 
 
 def test_vllm_needs_process_or_model_owner():

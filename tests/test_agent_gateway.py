@@ -41,7 +41,8 @@ def run_check(tmp_path, config=None, *, explicit=False, kind=None, mode=0o600,
         source += '\nPATH=' + shlex.quote(str(binary_dir)) + ':$PATH\n'
     if no_python:
         source += '\ncommand() { return 1; }\n'
-    proc = subprocess.run(['/bin/bash', '-c', source + '\ncheck_agent_gateway\nprintf "SCORE=%s\\n" "$SCORE"'],
+    proc = subprocess.run(['/bin/bash', '-s'],
+                          input=source + '\ncheck_agent_gateway\nprintf "SCORE=%s\\n" "$SCORE"\n',
                           env=env, cwd=home, capture_output=True, text=True, timeout=5)
     assert proc.returncode == 0, proc.stderr
     assert 'command not found' not in proc.stderr
@@ -107,7 +108,7 @@ def test_capability_or_ingress_controls_prevent_critical(tmp_path, change):
                                     {'$include': '/tmp/SECRET-CANARY'}, {'tools': {'exec': {'mode': 'future'}}}])
 def test_unsupported_unknown_secret_safe(tmp_path, config):
     out = run_check(tmp_path, config)
-    assert 'UNKNOWN' in out and 'SCORE=4' in out and 'SECRET-CANARY' not in out
+    assert 'UNKNOWN' in out and 'SCORE=0' in out and 'SECRET-CANARY' not in out
 
 
 @pytest.mark.parametrize('kind', ['fifo', 'symlink'])
@@ -188,40 +189,12 @@ def test_allow_does_not_expand_restricted_base_profile(tmp_path):
     assert 'COOKED' not in out and 'SCORE=4' in out
 
 
-@pytest.mark.parametrize('script', [
-    None,
-    "printf 'OpenClaw 2026.9.2\\n'",
-    "printf 'OpenClaw 2025.12.30\\n'",
-    "printf 'OpenClaw 2026.9.6-beta.1\\n'",
-    "printf 'other output\\n'",
-    'exit 2',
-    "head -c 1024 /dev/zero | tr '\\000' x",
-])
-def test_unrecognized_openclaw_version_does_not_claim_config_risk(tmp_path, script):
-    out = run_check(tmp_path, powerful(), version_script=script)
-    assert 'UNKNOWN' in out and 'SCORE=4' in out
-    assert 'COOKED' not in out and 'WARMING' not in out
-
-
-def test_openclaw_version_command_has_a_time_limit(tmp_path):
-    out = run_check(tmp_path, powerful(), version_script='sleep 3')
-    assert 'UNKNOWN' in out and 'SCORE=4' in out
-    assert 'COOKED' not in out
-
-
-def test_known_openclaw_version_with_build_suffix_retains_findings(tmp_path):
-    out = run_check(tmp_path, powerful(), version_script="printf 'OpenClaw 2026.9.6 (abc123)\\n'")
+def test_openclaw_config_inspected_without_cli_binary(tmp_path):
+    out = run_check(tmp_path, powerful(), version_script=None)
     assert 'COOKED' in out and 'SCORE=10' in out
 
 
-@pytest.mark.parametrize('version', ['2026.9.3', '2026.9.7', '2026.10.5', '2027.1.1'])
-def test_releases_at_or_after_reviewed_baseline_retain_findings(tmp_path, version):
-    out = run_check(tmp_path, powerful(), version_script=f"printf 'OpenClaw {version}\\n'")
+def test_openclaw_jsonc_comments_and_trailing_commas_supported(tmp_path):
+    raw = '{\n  // Gateway comment\n  "gateway": {\n    "bind": "lan",\n    "auth": {"mode": "none",},\n  },\n}\n'
+    out = run_check(tmp_path, raw, version_script=None)
     assert 'COOKED' in out and 'SCORE=10' in out
-
-
-def test_config_last_touched_version_is_not_installed_version(tmp_path):
-    config = powerful()
-    config['meta'] = {'lastTouchedVersion': '2026.9.6'}
-    out = run_check(tmp_path, config, version_script=None)
-    assert 'UNKNOWN' in out and 'COOKED' not in out

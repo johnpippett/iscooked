@@ -23,40 +23,45 @@
 
   const EXAMPLE = {
     schema_version: 1,
-    scanner: { name: "iscooked", version: "1.3.0" },
+    scanner: { name: "iscooked", version: "1.4.0" },
     platform: "linux",
     completed: true,
     summary: {
       status: "critical",
-      counts: { total: 12, critical: 2, warning: 2, passed: 3, unknown: 1, skipped: 4 },
-      score: { value: 32, raw_value: 32, maximum: 100, kind: "heuristic", includes_unknown: true },
+      counts: { total: 12, critical: 2, warning: 2, passed: 4, unknown: 1, skipped: 3 },
+      score: { value: 28, raw_value: 28, maximum: 100, kind: "heuristic", includes_unknown: false },
     },
-    coverage: { areas_started: 17, areas_with_observations: 6, areas_with_unknown: 1, areas_with_skips: 4 },
+    coverage: { areas_started: 17, areas_with_observations: 8, areas_with_unknown: 1, areas_with_skips: 3 },
     findings: [
       { check: { id: "01", title: "Network Exposure" }, status: "critical", points: 10,
-        message: "Unidentified service on port 8000 (commonly vLLM) is listening on ALL interfaces" },
+        message: "Unidentified service on port 8000 (commonly vLLM) is listening on ALL interfaces",
+        remediation: "Bind service on port 8000 to 127.0.0.1 or restrict access with a firewall" },
       { check: { id: "01", title: "Network Exposure" }, status: "passed", points: 0,
         message: "Unidentified service on port 1234 (commonly LM Studio) is bound to localhost only" },
       { check: { id: "02", title: "API Authentication" }, status: "warning", points: 4,
-        message: "Ollama /api/tags on port 11434 accessible without authentication on localhost; other routes were not tested" },
-      { check: { id: "03", title: "Model File Permissions" }, status: "critical", points: 10,
-        message: "Files in /srv/models are world-writable!" },
-      { check: { id: "04", title: "Docker / Container Risks" }, status: "unknown", points: 4,
-        message: "Docker daemon inspection incomplete — UNKNOWN (unreachable or bounded command unavailable)" },
+        message: "Ollama /api/tags on port 11434 accessible without authentication on localhost; other routes were not tested",
+        remediation: "Put Ollama behind an authenticated proxy or keep it bound strictly to localhost" },
+      { check: { id: "04", title: "Docker / Container Risks" }, status: "unknown", points: 0,
+        message: "Docker daemon inspection incomplete — UNKNOWN (unreachable or bounded command unavailable)",
+        remediation: "Run docker info --format '{{json .SecurityOptions}}'; see https://iscooked.com/unknowns#docker" },
       { check: { id: "05", title: "GPU Driver Exposure" }, status: "skipped", points: 0,
         message: "No GPU devices detected" },
-      { check: { id: "06", title: "Telemetry / Phoning Home" }, status: "skipped", points: 0,
-        message: "No supported opt-out evidence found; outbound traffic and running service settings are not assessed" },
       { check: { id: "07", title: "Firewall Status" }, status: "passed", points: 0,
-        message: "UFW firewall is active" },
+        message: "UFW firewall service is active" },
       { check: { id: "10", title: "Sensitive File Exposure" }, status: "passed", points: 0,
-        message: "No world-readable .env files with API keys found" },
+        message: "3 coding-agent/dev credential store(s) have private permissions (mode 600/400)" },
       { check: { id: "13", title: "Browser Remote Debugging" }, status: "skipped", points: 0,
-        message: "No Chromium remote debugging listener found" },
+        message: "No known browser process with a network debugging flag found" },
       { check: { id: "14", title: "MCP Configuration" }, status: "warning", points: 4,
-        message: "Claude Desktop Linux: filesystem server grants access to entire home directory; narrow grants to required project directories" },
-      { check: { id: "16", title: "Remote Model Code" }, status: "skipped", points: 0,
-        message: "No supported active vLLM or TGI launch found; config files, environment overrides and other runtimes are not inspected." },
+        message: "Claude Code project: uses unpinned 'npx -y' without an explicit @version",
+        remediation: "Pin a specific version (for example @scope/package@1.2.3) instead of unpinned npx -y" },
+      { check: { id: "15", title: "Coding Agent Permissions & Gateways" }, status: "critical", points: 10,
+        message: "Claude Code (user): permissions.defaultMode is set to bypassPermissions",
+        remediation: "Remove \"defaultMode\": \"bypassPermissions\" from ~/.claude/settings.json" },
+      { check: { id: "15", title: "Coding Agent Permissions & Gateways" }, status: "passed", points: 0,
+        message: "Checked 2 instruction file(s) in current directory; no hidden Unicode prompt-injection characters found" },
+      { check: { id: "17", title: "Runtime Versions" }, status: "skipped", points: 0,
+        message: "No Ollama, vLLM or LiteLLM proxy on its default port and no LiteLLM package in common Python environments; nothing to check" },
     ],
   };
 
@@ -92,6 +97,7 @@
         title: String(f.check.title ?? "Unnamed check"),
         status,
         message: f.message,
+        remediation: typeof f.remediation === "string" ? f.remediation : "",
         points: Number(f.points) || 0,
         order: index,
       };
@@ -210,6 +216,9 @@
               if ((f.status === "unknown" || f.status === "skipped") && GUIDE[f.id]) {
                 message.append(el("a", { href: `./unknowns.html#${GUIDE[f.id]}` }, "Next step ↗"));
               }
+              if (f.remediation) {
+                message.append(el("span", { class: "finding-hint" }, `↳ ${f.remediation}`));
+              }
               return el("li", { class: "finding-row" }, pill(f.status), message);
             }),
           ),
@@ -248,8 +257,10 @@
       .filter((f) => f.status !== "passed" && f.status !== "skipped")
       .sort((a, b) => RANK[a.status] - RANK[b.status] || a.order - b.order);
     if (notable.length) {
-      lines.push("| Status | Check | Finding |", "|---|---|---|");
-      notable.forEach((f) => lines.push(`| ${LABEL[f.status]} | ${cell(f.id)} ${cell(f.title)} | ${cell(f.message)} |`));
+      lines.push("| Status | Check | Finding | Suggested fix |", "|---|---|---|---|");
+      notable.forEach((f) =>
+        lines.push(`| ${LABEL[f.status]} | ${cell(f.id)} ${cell(f.title)} | ${cell(f.message)} | ${cell(f.remediation || "—")} |`),
+      );
       lines.push("");
     } else {
       lines.push("No critical findings, warnings, or unknown results.", "");

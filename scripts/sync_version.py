@@ -39,7 +39,7 @@ def main():
         html = replace_one(html, r'(<div class="hero-badge">[^\n]*<span>)v[0-9.]+(</span>)',
                            rf'\g<1>v{version}\g<2>', 'site badge')
         changes['site/index.html'] = replace_one(
-            html, r'(Local AI Security Scanner v)[0-9.]+(</span>)',
+            html, r'(Security Scanner v)[0-9.]+(</span>)',
             rf'\g<1>{version}\g<2>', 'site demo')
         changes['README.md'] = replace_one(
             (root / 'README.md').read_text(), r'(img.shields.io/badge/version-)[0-9.]+(-blue)',

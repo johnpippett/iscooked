@@ -21,7 +21,7 @@ esac'''
 
 @pytest.mark.parametrize('status,word,score', [('200','accessible without authentication',4),
     ('401','requires authentication',0), ('403','denied access',0),
-    ('404','inconclusive',4), ('302','redirect',4), ('500','inconclusive',4)])
+    ('404','inconclusive',0), ('302','redirect',0), ('500','inconclusive',0)])
 def test_endpoint_outcomes(status, word, score):
     r = probe(status)
     assert r.returncode == 0, r.stderr
@@ -34,7 +34,7 @@ def test_endpoint_outcomes(status, word, score):
 def test_timeout_is_inconclusive():
     r = probe('000', failure=28)
     assert 'inconclusive' in r.stdout_plain
-    assert 'SCORE=4' in r.stdout_plain
+    assert 'SCORE=0' in r.stdout_plain
 
 
 @pytest.mark.parametrize('body', ['<html>homepage</html>', {'data': []}, {'models': 'not a list'}])
@@ -104,7 +104,7 @@ def test_discovered_hostname_never_becomes_probe_target(tmp_path):
 
 def test_known_service_malformed_response_is_inconclusive():
     r = probe(body={'error':'oops'})
-    assert 'inconclusive' in r.stdout_plain and 'SCORE=4' in r.stdout_plain
+    assert 'inconclusive' in r.stdout_plain and 'SCORE=0' in r.stdout_plain
 
 
 def test_same_endpoint_wildcard_and_loopback_scored_once():

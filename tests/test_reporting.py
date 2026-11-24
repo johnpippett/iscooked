@@ -127,8 +127,8 @@ result_warming $'Control\033[31m\tcharacters\nremoved'
     assert data["summary"]["counts"] == {
         "critical": 1, "warning": 2, "passed": 1, "unknown": 1, "skipped": 1, "total": 6,
     }
-    assert data["summary"]["score"]["value"] == 22
-    assert data["summary"]["score"]["includes_unknown"] is True
+    assert data["summary"]["score"]["value"] == 18
+    assert data["summary"]["score"]["includes_unknown"] is False
     assert len(data["findings"]) == 6
     assert data["findings"][0]["message"] == 'A "quoted" path with \\ backslash'
     assert data["findings"][0]["check"] == {"id": "01", "title": "Network Exposure"}

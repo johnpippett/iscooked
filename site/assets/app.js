@@ -78,6 +78,7 @@
     if (!text.trim()) return 40;
     if (line.classList.contains("t-banner")) return 55;
     if (/^\s+\[\d/.test(text)) return 120;
+    if (/^\s+↳/.test(text)) return 90;
     if (/COOKED|WARMING|SAFE|SKIP|UNKNOWN/.test(text)) return 260;
     if (/^\s+─/.test(text)) return 25;
     return 80;
@@ -206,24 +207,21 @@
     const parts = [];
     if (counts.critical) parts.push(`${counts.critical} × 10`);
     if (counts.warning) parts.push(`${counts.warning} × 4`);
-    if (counts.unknown) parts.push(`${counts.unknown} × 4`);
     const sum = parts.length ? `${parts.join(" + ")} = ${v.raw}` : "No points";
     const capped = v.raw > 100 ? `, capped at 100` : "";
     let note;
-    if (v.level === "defrosting" && counts.critical + counts.warning + counts.passed === 0) {
+    if (v.level === "defrosting") {
       note = "Nothing passed and nothing failed, so the scanner will not call it fresh. Resolve the unknowns and skips first.";
-    } else if (v.level === "defrosting") {
-      note = "Only unknown or skipped results add heat here, so the verdict stays on ice instead of fresh.";
     } else if (counts.critical > 0 && v.score < 15) {
       note = "A critical finding lifts any low score to at least Slightly warm.";
     } else if (counts.critical > 0) {
       note = "Any critical finding turns the verdict red, whatever the number.";
     } else if (counts.warning > 0 && v.score < 15) {
       note = "A warning lifts a low score to at least Slightly warm.";
-    } else if (v.level === "fresh") {
-      note = "No heat from the checks that ran. A low score is still not a guarantee.";
+    } else if (counts.unknown > 0) {
+      note = "Unknown results stay visible in the count without inflating your score.";
     } else {
-      note = "Unknown results count like warnings. The scanner could not rule them out.";
+      note = "No heat from the checks that ran. Skipped checks still limit coverage.";
     }
     const strong = document.createElement("strong");
     strong.textContent = `${sum}${capped}.`;

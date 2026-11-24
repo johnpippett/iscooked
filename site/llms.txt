@@ -1,10 +1,11 @@
 # IsCooked
 
-> A local security scanner for Ollama, LM Studio, and self-hosted AI setups.
+> A local security scanner for coding agents (Claude Code, Cursor, OpenCode, Codex CLI, MCP, OpenClaw) and local AI setups (Ollama, LM Studio, vLLM, LiteLLM, Docker).
 
 ## Run the scanner
 
 The canonical Bash source URL is https://iscooked.com/iscooked.com.
+The SHA-256 checksum file is https://iscooked.com/iscooked.com.sha256.
 
 The homepage shows a static example report. It does not start the scanner. Start
 the scanner in a terminal.
@@ -13,22 +14,23 @@ the scanner in a terminal.
 curl -fsSL https://iscooked.com/iscooked.com | bash
 ```
 
-To download and read the source before execution:
+To download, verify the checksum, and read the source before execution:
 
 ```bash
 curl -fsSL https://iscooked.com/iscooked.com -o iscooked.com &&
+curl -fsSL https://iscooked.com/iscooked.com.sha256 -o iscooked.com.sha256 &&
+sha256sum -c iscooked.com.sha256 &&
 less iscooked.com
 ```
 
-After you read the source, start it with the Bash 4 or later executable you selected:
+After you read the source, run it with Bash 3.2 or later:
 
 ```bash
 bash iscooked.com
 ```
 
-Requires Bash 4 or later and standard Unix tools. Some macOS installations use Bash 3.2. Use
-Bash 4 or later on macOS. Run `bash --version` to examine the version. Python 3 is optional for structured configuration,
-API, browser, and model-code checks; curl is needed for HTTP probes. Missing
+Requires Bash 3.2 or later (works out of the box on macOS and Linux) and standard Unix tools. Python 3 is optional for structured configuration,
+API, browser, MCP, coding-agent, and model-code checks; curl is needed for HTTP/HTTPS probes. Missing
 optional tools cause skipped checks. Elevated privileges can improve some
 firewall and port checks. The scan runs locally and does not send scan results
 to a remote service. AI service probes target localhost or their local bind
@@ -41,16 +43,16 @@ canonical script URL above; use the canonical URL in new instructions.
 ## Reports
 
 After download, run `bash iscooked.com --help` for options without a scan.
-Use `--json` for a structured report (requires Python 3), or `--no-color` for text without terminal colors.
+Use `--json` for a structured report (requires Python 3), `-q` / `--problems-only` to show only critical, warning, and unknown findings, `--only LIST` or `--skip LIST` to filter check areas (by number or slug such as `mcp,agents,versions`), `--diff FILE` to compare against a prior JSON report, or `--no-color` for text without terminal colors.
 Use `--fail-on critical`, `--fail-on warning`, or `--fail-on unknown` to select a failure exit policy.
 Without a policy, a completed scan returns 0 regardless of findings. Invalid options and unsupported requirements return 2.
 Skipped results do not trigger a failure exit. A successful exit does not prove that the system is secure.
 
 Reports count critical, warning, passed, unknown, and skipped results separately.
+Critical findings add 10 points, warnings add 4 points, and unknown, passed, and skipped results add 0 points (score is capped at 100). Each non-passing finding includes a remediation hint (`↳` in terminal output, `"remediation"` in JSON).
 The terminal summary shows a colored bar, a `% cooked` score, and a score label.
 The labels are LOOKING FRESH, SLIGHTLY WARM, MEDIUM RARE, and FULLY COOKED.
 Critical findings and warnings cannot receive LOOKING FRESH. Reports without passed, warning, or critical results use STILL DEFROSTING.
-Low scores with unknown or skipped results also use STILL DEFROSTING when no risk findings occur.
 Critical findings receive a separate instruction at every score. The score is a heuristic total, not a probability.
 Scanner environment values do not establish the settings of a running service.
 
@@ -60,5 +62,6 @@ Scanner environment values do not establish the settings of a running service.
 - [Unknown results](https://iscooked.com/unknowns): Diagnostic steps and limits for incomplete checks.
 - [Report viewer](https://iscooked.com/report): Opens a `--json` report in the browser. The page blocks network requests; nothing is uploaded.
 - [Bash source](https://iscooked.com/iscooked.com): The scanner, not an HTML page.
+- [SHA-256 checksum](https://iscooked.com/iscooked.com.sha256): Checksum for verifying the downloaded scanner.
 - [Repository and README](https://github.com/johnpippett/iscooked): Requirements,
   usage, scoring, and source code.

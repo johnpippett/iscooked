@@ -55,15 +55,15 @@ def test_unrelated_commands_skip(cmd):
 
 
 @pytest.mark.parametrize('tail', ['--config secret.yaml', '--trust-remote-code=maybe', '--trust-remote-code "unterminated'])
-def test_active_unknown_preserves_four_points(tail):
+def test_active_unknown_is_reported_with_zero_points(tail):
     r = scan('vllm serve model ' + tail)
-    assert 'could not establish' in r.stdout_plain and 'SCORE=4' in r.stdout_plain
+    assert 'could not establish' in r.stdout_plain and 'SCORE=0' in r.stdout_plain
     assert 'secret.yaml' not in r.stdout_plain
 
 
 def test_failed_process_inspection():
     r = scan(ps='echo secret >&2; exit 1')
-    assert 'inspection unavailable' in r.stdout_plain and 'SCORE=4' in r.stdout_plain
+    assert 'inspection unavailable' in r.stdout_plain and 'SCORE=0' in r.stdout_plain
     assert 'secret' not in r.stdout + r.stderr
 
 
@@ -79,7 +79,7 @@ def test_no_processes():
 
 def test_conflicting_flags_are_unknown():
     r = scan('vllm serve model --trust-remote-code --no-trust-remote-code')
-    assert 'could not establish' in r.stdout_plain and 'SCORE=4' in r.stdout_plain
+    assert 'could not establish' in r.stdout_plain and 'SCORE=0' in r.stdout_plain
 
 
 def test_tgi_weights_revision_is_not_verified_executable_code_pin():
@@ -97,18 +97,18 @@ def test_model_names_credentials_and_control_characters_are_not_printed():
 def test_ps_byte_limit_is_unknown():
     r = scan(ps="head -c 1048577 /dev/zero | tr '\\000' x")
     assert r.returncode == 0
-    assert 'inspection unavailable' in r.stdout_plain and 'SCORE=4' in r.stdout_plain
+    assert 'inspection unavailable' in r.stdout_plain and 'SCORE=0' in r.stdout_plain
 
 
 def test_ps_timeout_is_unknown():
     r = scan(ps='exec sleep 5')
     assert r.returncode == 0
-    assert 'inspection unavailable' in r.stdout_plain and 'SCORE=4' in r.stdout_plain
+    assert 'inspection unavailable' in r.stdout_plain and 'SCORE=0' in r.stdout_plain
 
 
 def test_malformed_process_row_is_unknown():
     r = scan(ps='echo malformed')
-    assert 'inspection unavailable' in r.stdout_plain and 'SCORE=4' in r.stdout_plain
+    assert 'inspection unavailable' in r.stdout_plain and 'SCORE=0' in r.stdout_plain
 
 
 @pytest.mark.parametrize('command', ['vllm serve model', 'text-generation-launcher --model-id model'])

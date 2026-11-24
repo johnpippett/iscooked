@@ -25,7 +25,8 @@ def run_check(tmp_path, data=None, mode=0o600, home_mode=0o755, filename='.mcp.j
         target.write_text(data if isinstance(data, str) else json.dumps(data))
         target.chmod(mode)
     source = SCRIPT.read_text().replace('main "$@"', '')
-    proc = subprocess.run(['/bin/bash', '-c', source + '\ncheck_mcp_config\nprintf "SCORE=%s\\n" "$SCORE"'],
+    proc = subprocess.run(['/bin/bash', '-s'],
+                          input=source + '\ncheck_mcp_config\nprintf "SCORE=%s\\n" "$SCORE"\n',
                           cwd=work, env={**os.environ, 'HOME': str(home)}, capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
     return proc.stdout
@@ -36,9 +37,15 @@ def test_absent_config_is_skip(tmp_path):
 
 
 def test_restricted_filesystem_grant(tmp_path):
-    out = run_check(tmp_path, {'mcpServers': {'files': {'command': 'npx', 'args': ['-y', '@modelcontextprotocol/server-filesystem', '/tmp/project']}}})
+    out = run_check(tmp_path, {'mcpServers': {'files': {'command': 'npx', 'args': ['-y', '@modelcontextprotocol/server-filesystem@0.6.2', '/tmp/project']}}})
     assert 'SCORE=0' in out
     assert 'no broad' in out
+
+
+def test_unpinned_npx_yes_is_warning(tmp_path):
+    out = run_check(tmp_path, {'mcpServers': {'files': {'command': 'npx', 'args': ['-y', '@modelcontextprotocol/server-filesystem', '/tmp/project']}}})
+    assert 'unpinned' in out
+    assert 'SCORE=4' in out
 
 
 def test_home_scope_and_score(tmp_path):
@@ -67,9 +74,11 @@ def test_group_write_is_warning(tmp_path):
 def test_credentials_never_printed_and_require_traversal(tmp_path):
     config = {'mcpServers': {'secret-name\n': {'env': {'API_KEY': 'dont-print-this'}}}}
     out = run_check(tmp_path, config, mode=0o644)
-    assert 'credential-bearing' in out and 'SCORE=10' in out
+    assert 'credential-bearing' in out and 'SCORE=14' in out
     assert 'dont-print-this' not in out and 'secret-name' not in out
-    assert 'SCORE=0' in run_check(tmp_path, config, mode=0o644, home_mode=0o700)
+    out_private = run_check(tmp_path, config, mode=0o644, home_mode=0o700)
+    assert 'credential-bearing' not in out_private
+    assert 'hardcoded credential' in out_private and 'SCORE=4' in out_private
 
 
 def test_malformed_and_unsupported_are_unknown(tmp_path):

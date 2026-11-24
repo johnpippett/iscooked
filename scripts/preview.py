@@ -10,7 +10,8 @@ from urllib.parse import urlsplit
 
 DEFAULT_BIND = "127.0.0.1"
 DEFAULT_PORT = 8794
-PLAIN_TEXT_PATHS = {"/iscooked.com", "/llms.txt"}
+PLAIN_TEXT_PATHS = {"/iscooked.com", "/iscooked.com.sha256", "/llms.txt"}
+CLEAN_HTML_ROUTES = {"/report": "/report.html", "/unknowns": "/unknowns.html"}
 
 
 class PreviewRequestHandler(SimpleHTTPRequestHandler):
@@ -18,6 +19,11 @@ class PreviewRequestHandler(SimpleHTTPRequestHandler):
 
     def _request_path(self):
         return urlsplit(self.path).path
+
+    def _rewrite_clean_route(self):
+        req_path = self._request_path()
+        if req_path in CLEAN_HTML_ROUTES:
+            self.path = CLEAN_HTML_ROUTES[req_path]
 
     def guess_type(self, path):
         if self._request_path() in PLAIN_TEXT_PATHS:
@@ -36,6 +42,7 @@ class PreviewRequestHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
+        self._rewrite_clean_route()
         super().do_GET()
 
     def do_HEAD(self):
@@ -45,6 +52,7 @@ class PreviewRequestHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
+        self._rewrite_clean_route()
         super().do_HEAD()
 
     def list_directory(self, path):

@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#141512" media="(prefers-color-scheme: dark)" />
     <meta
       name="description"
-      content="A local security scanner for AI services, containers, and agents. Examine 17 check areas with one Bash script. No account. No telemetry."
+      content="A local security scanner for coding agents, MCP configs, AI services, and containers. Examine 17 check areas with one Bash script. No account. No telemetry."
     />
     <link rel="canonical" href="https://iscooked.com/" />
     <meta property="og:type" content="website" />
@@ -16,7 +16,7 @@
     <meta property="og:title" content="iscooked — Is your local AI cooked?" />
     <meta
       property="og:description"
-      content="Examine your AI services, containers, and agent settings. One local scanner. No account. No telemetry."
+      content="Examine your coding agents, MCP grants, AI services, and containers. One local scanner. No account. No telemetry."
     />
     <meta property="og:image" content="https://iscooked.com/assets/og-card-v2.png" />
     <meta property="og:image:type" content="image/png" />
@@ -27,16 +27,16 @@
     <meta name="twitter:title" content="iscooked — Is your local AI cooked?" />
     <meta
       name="twitter:description"
-      content="One local security scanner for AI services, containers, and agents."
+      content="One local security scanner for coding agents, MCP configs, AI services, and containers."
     />
     <meta name="twitter:image" content="https://iscooked.com/assets/og-card-v2.png" />
     <meta name="twitter:image:alt" content="iscooked: Your AI is local. Is it cooked? Beside it, a scan reports COOKED, WARMING UP, and SAFE results and a 28% cooked score." />
     <link rel="icon" type="image/svg+xml" href="./assets/brand/favicon.svg" />
     <link rel="preload" href="./assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./assets/fonts/martian-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="./assets/theme.css?v=8" />
-    <script src="./assets/score.js?v=1" defer></script>
-    <script src="./assets/app.js?v=5" defer></script>
+    <link rel="stylesheet" href="./assets/theme.css?v=9" />
+    <script src="./assets/score.js?v=2" defer></script>
+    <script src="./assets/app.js?v=6" defer></script>
     <script src="./assets/fx.js?v=3" type="module"></script>
   </head>
   <body>
@@ -69,12 +69,13 @@
     <main id="main" tabindex="-1">
       <section class="hero container" aria-labelledby="hero-heading">
         <div class="hero-copy">
-          <span class="eyebrow">Local AI security scanner</span>
+          <span class="eyebrow">Coding agent &amp; local AI scanner</span>
           <h1 id="hero-heading">Your AI is local.<br /><span class="heat-text">Is it cooked?</span></h1>
           <p class="lead">
-            One Bash script checks your model servers, containers, agent configs,
-            and MCP grants for the mistakes that get local AI owned. It reads.
-            It never fixes, phones home, or starts anything.
+            One Bash script checks Claude Code, Cursor, OpenCode, Codex, MCP
+            grants, model servers, and containers for the mistakes that get
+            local setups owned. It reads. It never fixes, phones home, or
+            starts anything.
           </p>
           <div class="oneliner">
             <pre><code id="hero-command">curl -fsSL https://iscooked.com/iscooked.com | bash</code></pre>
@@ -90,10 +91,10 @@
           <p class="copy-status" id="hero-copy-status" role="status" aria-live="polite"></p>
           <div class="hero-actions">
             <a class="text-link" href="#install"
-              >Prefer to read it first?
+              >Prefer to verify it first?
               <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 12h15m-6-6 6 6-6 6" /></svg
             ></a>
-            <p class="hero-note"><b>Linux · macOS</b> · Bash 4+ · No account · No telemetry</p>
+            <p class="hero-note"><b>Linux · macOS</b> · Bash 3.2+ · No account · No telemetry</p>
           </div>
         </div>
 
@@ -104,7 +105,7 @@
             <span class="terminal-title" id="demo-caption">Example scan · synthetic output</span>
             <button class="terminal-replay enhancement" type="button" hidden>Replay</button>
           </div>
-          <pre class="terminal-body" tabindex="0" aria-label="Example scanner output"><span class="ln"><span class="t-prompt">~</span> $ <span class="t-cmd">bash iscooked.com</span></span><span class="ln"></span><span class="ln t-banner">                    __            __       __</span><span class="ln t-banner">  _________  ____  / /_____  ____/ /  ____/ /_</span><span class="ln t-banner"> / ___/ __ \/ __ \/ //_/ _ \/ __  /  / ___/ __ \</span><span class="ln t-banner">/ /__/ /_/ / /_/ / ,&lt; /  __/ /_/ /_ (__  ) / / /</span><span class="ln t-banner">\___/\____/\____/_/|_|\___/\__,_/(_)____/_/ /_/</span><span class="ln"></span><span class="ln t-dim">  Am I Cooked? — Local AI Security Scanner v1.3.1</span><span class="ln t-dim">  https://iscooked.com</span><span class="ln"></span><span class="ln t-cyan t-bold">  Scanning your setup...</span><span class="ln"></span><span class="ln t-dim">──────────────────────────────────────────────────────────────</span><span class="ln"></span><span class="ln t-bold">  [01] Network Exposure</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-red">🔥 COOKED</span>  Unidentified service on port 8000 (commonly vLLM) is listening on ALL interfaces</span><span class="ln">  <span class="t-green">✅ SAFE</span>  Unidentified service on port 1234 (commonly LM Studio) is bound to localhost only</span><span class="ln"></span><span class="ln t-bold">  [02] API Authentication</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-yellow">⚠  WARMING UP</span>  Ollama /api/tags on port 11434 accessible without authentication on localhost; other routes were not tested</span><span class="ln"></span><span class="ln t-bold">  [03] Model File Permissions</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-red">🔥 COOKED</span>  Files in /srv/models are world-writable!</span><span class="ln"></span><span class="ln t-bold">  [04] Docker / Container Risks</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-green">✅ SAFE</span>  Container 'open-webui' is running as user 'app'</span><span class="ln">  <span class="t-yellow">⚠  WARMING UP</span>  Container 'open-webui' is using host networking</span><span class="ln"></span><span class="ln t-bold">  [05] GPU Driver Exposure</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-dim">⏭  SKIP</span>  No GPU devices detected</span><span class="ln"></span><span class="ln t-bold">  [06] Telemetry / Phoning Home</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-dim">⏭  SKIP</span>  No supported opt-out evidence found</span><span class="ln"></span><span class="ln t-bold">  [07] Firewall Status</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-green">✅ SAFE</span>  UFW firewall is active</span><span class="ln"></span><span class="ln t-dim">  [08–17] 10 more areas skipped in this example</span><span class="ln"></span><span class="ln t-dim">──────────────────────────────────────────────────────────────</span><span class="ln t-bold">  YOUR COOKED SCORE</span><span class="ln"></span><span class="ln">  <span class="t-heat">28%</span> <span class="t-dim">cooked</span>  [<span class="t-red">▒▒▒▒▒▒▒▒▒▒▒                             </span>]</span><span class="ln"></span><span class="ln t-heat">  SLIGHTLY WARM</span><span class="ln"></span><span class="ln">  <span class="t-red t-bold">2</span> critical  <span class="t-yellow t-bold">2</span> warnings  <span class="t-green t-bold">3</span> passed</span><span class="ln">  <span class="t-cyan">0</span> unknown  <span class="t-dim">12 skipped  (19 results)</span></span><span class="ln"></span><span class="ln t-red">  Fix critical findings first.</span><span class="ln"></span><span class="ln"><span class="t-prompt">~</span> $ <span class="caret"></span></span></pre>
+          <pre class="terminal-body" tabindex="0" aria-label="Example scanner output"><span class="ln"><span class="t-prompt">~</span> $ <span class="t-cmd">bash iscooked.com</span></span><span class="ln"></span><span class="ln t-banner">                    __            __       __</span><span class="ln t-banner">  _________  ____  / /_____  ____/ /  ____/ /_</span><span class="ln t-banner"> / ___/ __ \/ __ \/ //_/ _ \/ __  /  / ___/ __ \</span><span class="ln t-banner">/ /__/ /_/ / /_/ / ,&lt; /  __/ /_/ /_ (__  ) / / /</span><span class="ln t-banner">\___/\____/\____/_/|_|\___/\__,_/(_)____/_/ /_/</span><span class="ln"></span><span class="ln t-dim">  Am I Cooked? — AI &amp; Coding Agent Security Scanner v1.4.0</span><span class="ln t-dim">  https://iscooked.com</span><span class="ln"></span><span class="ln t-cyan t-bold">  Scanning your setup...</span><span class="ln"></span><span class="ln t-dim">──────────────────────────────────────────────────────────────</span><span class="ln"></span><span class="ln t-bold">  [01] Network Exposure</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-red">🔥 COOKED</span>  Unidentified service on port 8000 (commonly vLLM) is listening on ALL interfaces</span><span class="ln t-dim">    ↳ Bind service on port 8000 to 127.0.0.1 or restrict access with a firewall</span><span class="ln">  <span class="t-green">✅ SAFE</span>  Unidentified service on port 1234 (commonly LM Studio) is bound to localhost only</span><span class="ln"></span><span class="ln t-bold">  [02] API Authentication</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-yellow">⚠  WARMING UP</span>  Ollama /api/tags on port 11434 accessible without authentication on localhost</span><span class="ln t-dim">    ↳ Put Ollama behind an authenticated proxy or keep it bound strictly to localhost</span><span class="ln"></span><span class="ln t-bold">  [07] Firewall Status</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-green">✅ SAFE</span>  UFW firewall service is active</span><span class="ln"></span><span class="ln t-bold">  [14] MCP Configuration</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-yellow">⚠  WARMING UP</span>  Claude Code project: uses unpinned 'npx -y' without an explicit @version</span><span class="ln t-dim">    ↳ Pin a specific version (for example @scope/package@1.2.3) instead of unpinned npx -y</span><span class="ln"></span><span class="ln t-bold">  [15] Coding Agent Permissions &amp; Gateways</span><span class="ln t-dim">  ────────────────────────────────────────────────────────</span><span class="ln">  <span class="t-red">🔥 COOKED</span>  Claude Code (user): permissions.defaultMode is set to bypassPermissions</span><span class="ln t-dim">    ↳ Remove "defaultMode": "bypassPermissions" from ~/.claude/settings.json</span><span class="ln">  <span class="t-green">✅ SAFE</span>  Checked 2 instruction file(s); no hidden Unicode prompt-injection characters found</span><span class="ln"></span><span class="ln t-dim">  [03–06, 08–13, 16–17] 12 more areas checked or skipped in this example</span><span class="ln"></span><span class="ln t-dim">──────────────────────────────────────────────────────────────</span><span class="ln t-bold">  YOUR COOKED SCORE</span><span class="ln"></span><span class="ln">  <span class="t-heat">28%</span> <span class="t-dim">cooked</span>  [<span class="t-red">▒▒▒▒▒▒▒▒▒▒▒                             </span>]</span><span class="ln"></span><span class="ln t-heat">  SLIGHTLY WARM</span><span class="ln"></span><span class="ln">  <span class="t-red t-bold">2</span> critical  <span class="t-yellow t-bold">2</span> warnings  <span class="t-green t-bold">3</span> passed</span><span class="ln">  <span class="t-cyan">0</span> unknown  <span class="t-dim">12 skipped  (19 results)</span></span><span class="ln"></span><span class="ln t-red">  Fix critical findings first.</span><span class="ln"></span><span class="ln"><span class="t-prompt">~</span> $ <span class="caret"></span></span></pre>
           <figcaption class="terminal-foot">Example data. This page does not scan your device.</figcaption>
         </figure>
         </div>
@@ -154,12 +155,13 @@
               <details class="check" open>
                 <summary>
                   <span class="check-number">01.1</span
-                  ><span><strong>Network exposure</strong><span class="check-description">Find listeners on common AI ports.</span></span>
+                  ><span><strong>Network exposure</strong><span class="check-description">Find listeners on common AI and coding-agent ports.</span></span>
                 </summary>
                 <div class="check-detail">
-                  The scanner identifies loopback and non-loopback bindings. A
-                  network listener does not prove internet access or identify
-                  the application.
+                  Identifies loopback and non-loopback bindings across Ollama,
+                  LM Studio, vLLM, SGLang, LiteLLM proxy, AnythingLLM, OpenCode
+                  Server, OpenClaw Gateway, and llama.cpp RPC. A listener does
+                  not prove internet access on its own.
                 </div>
               </details>
               <details class="check">
@@ -168,8 +170,9 @@
                   ><span><strong>API authentication</strong><span class="check-description">Examine model-list routes on identified services.</span></span>
                 </summary>
                 <div class="check-detail">
-                  Supports Ollama, LM Studio, and vLLM on their common ports. An
-                  authentication result applies only to the route examined.
+                  Supports Ollama, LM Studio, and vLLM on their common ports. In
+                  full scans, exposed unauthenticated endpoints correlate with
+                  Check 01 instead of double-counting the same port.
                 </div>
               </details>
               <details class="check">
@@ -178,18 +181,21 @@
                   ><span><strong>Firewall status</strong><span class="check-description">Separate active, inactive, and unknown states.</span></span>
                 </summary>
                 <div class="check-detail">
-                  Examines recognized firewall backends. Missing access or an
-                  unexpected response can produce an unknown result.
+                  Reads unprivileged Linux systemd and UFW state first before
+                  falling back to privileged firewall commands, plus macOS
+                  Application Firewall and pf. A missing firewall is critical
+                  only when an AI service listens beyond localhost.
                 </div>
               </details>
               <details class="check">
                 <summary>
                   <span class="check-number">01.4</span
-                  ><span><strong>Plain HTTP exposure</strong><span class="check-description">Find exposed services that use plain HTTP.</span></span>
+                  ><span><strong>Plain HTTP exposure</strong><span class="check-description">Find exposed services that serve plain HTTP without TLS.</span></span>
                 </summary>
                 <div class="check-detail">
-                  The SSL/TLS check examines common ports. It does not validate
-                  certificates or all encryption settings.
+                  Probes non-loopback AI listeners for plain HTTP and falls back
+                  to HTTPS before marking a port inconclusive. Correlates score
+                  with Check 01 in full scans.
                 </div>
               </details>
             </div>
@@ -208,22 +214,24 @@
               <details class="check">
                 <summary>
                   <span class="check-number">02.2</span
-                  ><span><strong>Sensitive files</strong><span class="check-description">Find exposed environment files and ownership risks.</span></span>
+                  ><span><strong>Sensitive files &amp; credential stores</strong><span class="check-description">Find git-tracked .env files, exposed keys, and open auth stores.</span></span>
                 </summary>
                 <div class="check-detail">
-                  Uses bounded searches for key-like values in environment
-                  files. It reports findings without displaying credentials.
+                  Checks git-tracked <code>.env</code> files, world-readable
+                  <code>.env</code> files with API keys, and permissions on
+                  Claude Code, OpenCode, Codex, GitHub CLI, AWS, <code>.netrc</code>,
+                  and SSH private keys without printing secret values.
                 </div>
               </details>
               <details class="check">
                 <summary>
                   <span class="check-number">02.3</span
-                  ><span><strong>History &amp; logs</strong><span class="check-description">Find possible keys in history and exposed log directories.</span></span>
+                  ><span><strong>History &amp; logs</strong><span class="check-description">Find leaked provider keys in shell history and open log dirs.</span></span>
                 </summary>
                 <div class="check-detail">
-                  Examines known shell-history patterns and common AI log
-                  locations. It does not find every secret or examine every log
-                  file.
+                  Scans Bash, Zsh, and Fish history for OpenAI, Anthropic,
+                  OpenRouter, GitHub, Hugging Face, Gemini, and AWS key
+                  patterns, plus permissions on common AI log directories.
                 </div>
               </details>
             </div>
@@ -286,23 +294,30 @@
               <details class="check">
                 <summary>
                   <span class="check-number">04.3</span
-                  ><span><strong>MCP configuration</strong><span class="check-description">Examine filesystem grants and configuration permissions.</span></span>
+                  ><span><strong>MCP configuration</strong><span class="check-description">Audit 8+ MCP clients for broad grants, plain HTTP, and unpinned npx.</span></span>
                 </summary>
                 <div class="check-detail">
-                  Model Context Protocol (MCP) checks support selected Claude
-                  Desktop, Claude Code, and Cursor JSON files. The scanner never
-                  starts an MCP server.
+                  Reads JSON, JSONC, and TOML configs for Claude Desktop, Claude
+                  Code, Cursor, OpenCode, Windsurf, Zed, VS Code/Copilot, Cline,
+                  Roo Code, Codex CLI, and Gemini/Antigravity. Flags broad
+                  filesystem grants, plain non-loopback <code>http://</code>
+                  URLs, unpinned <code>npx -y</code> packages, hardcoded
+                  project secrets, and writable configs without starting servers.
                 </div>
               </details>
               <details class="check">
                 <summary>
                   <span class="check-number">04.4</span
-                  ><span><strong>OpenClaw gateway</strong><span class="check-description">Examine authentication and tool settings for OpenClaw CLI 2026.9.3 and later.</span></span>
+                  ><span><strong>Coding agents &amp; gateways</strong><span class="check-description">Inspect Claude Code, OpenCode, Codex, Cursor, OpenClaw, and instruction files.</span></span>
                 </summary>
                 <div class="check-detail">
-                  The check reads the OpenClaw CLI version and selected global
-                  policies in strict JSON. JSON5, includes, and unsupported
-                  overrides produce incomplete coverage.
+                  Checks Claude Code <code>bypassPermissions</code>, wildcard
+                  <code>Bash(*)</code> allowlists, and project hooks; OpenCode
+                  wildcard permissions; Codex CLI approval and sandbox policy;
+                  Cursor auto-run/YOLO mode; OpenClaw JSON/JSONC gateway and
+                  exec policies; and invisible or bidi Unicode prompt-injection
+                  characters in <code>CLAUDE.md</code>, <code>AGENTS.md</code>,
+                  <code>.cursorrules</code>, and Copilot instruction files.
                 </div>
               </details>
               <details class="check">
@@ -385,7 +400,7 @@
                 <div class="stepper">
                   <span class="dot dot-unknown" aria-hidden="true"></span>
                   <span class="stepper-name">Unknown<small>❓ UNKNOWN · could not verify</small></span>
-                  <span class="stepper-points">+4 each</span>
+                  <span class="stepper-points">+0</span>
                   <span class="stepper-control">
                     <button type="button" data-step="unknown" data-delta="-1" aria-label="Fewer unknown results">−</button
                     ><input id="count-unknown" data-count="unknown" type="number" inputmode="numeric" min="0" max="99" step="1" value="0" aria-label="Unknown results" /
@@ -408,7 +423,7 @@
                   <span class="stepper-points">+0</span>
                   <span class="stepper-control">
                     <button type="button" data-step="skipped" data-delta="-1" aria-label="Fewer skipped checks">−</button
-                    ><input id="count-skipped" data-count="skipped" type="number" inputmode="numeric" min="0" max="99" step="1" value="11" aria-label="Skipped checks" /
+                    ><input id="count-skipped" data-count="skipped" type="number" inputmode="numeric" min="0" max="99" step="1" value="12" aria-label="Skipped checks" /
                     ><button type="button" data-step="skipped" data-delta="1" aria-label="More skipped checks">+</button>
                   </span>
                 </div>
@@ -419,10 +434,10 @@
                   <button class="presets-reset" type="button" data-preset="0,0,0,0,0" aria-label="Reset all counts to zero">Reset</button>
                 </div>
                 <div class="presets-grid" role="group" aria-labelledby="presets-label">
-                  <button class="preset" type="button" data-preset="2,2,0,3,11"><b>The example scan</b><span data-preset-verdict></span></button>
-                  <button class="preset" type="button" data-preset="0,0,0,16,0"><b>Locked down</b><span data-preset-verdict></span></button>
-                  <button class="preset" type="button" data-preset="0,0,6,0,10"><b>Nothing to inspect</b><span data-preset-verdict></span></button>
-                  <button class="preset" type="button" data-preset="5,4,3,2,2"><b>Weekend homelab</b><span data-preset-verdict></span></button>
+                  <button class="preset" type="button" data-preset="2,2,0,3,12"><b>The example scan</b><span data-preset-verdict></span></button>
+                  <button class="preset" type="button" data-preset="0,0,0,12,5"><b>Locked down</b><span data-preset-verdict></span></button>
+                  <button class="preset" type="button" data-preset="0,0,6,0,11"><b>Nothing to inspect</b><span data-preset-verdict></span></button>
+                  <button class="preset" type="button" data-preset="5,4,3,2,3"><b>Weekend homelab</b><span data-preset-verdict></span></button>
                 </div>
               </div>
             </div>
@@ -470,37 +485,59 @@
 
       <section class="container section" id="report" aria-labelledby="plate-heading">
         <div class="plate">
-          <div>
-            <span class="eyebrow">New · Report viewer</span>
+          <div class="plate-preview" aria-label="Report viewer preview">
+            <div class="plate-head">
+              <span class="plate-file">cooked.json</span>
+              <span class="plate-score"><b>28%</b> · SLIGHTLY WARM</span>
+            </div>
+            <div class="plate-rows">
+              <div class="plate-row">
+                <span class="pill pill-critical">Critical</span>
+                <span>Claude Code: permissions.defaultMode is set to bypassPermissions<span class="plate-hint">↳ Remove "defaultMode": "bypassPermissions" from ~/.claude/settings.json</span></span>
+              </div>
+              <div class="plate-row">
+                <span class="pill pill-critical">Critical</span>
+                <span>Port 8000 listens on all interfaces</span>
+              </div>
+              <div class="plate-row">
+                <span class="pill pill-warning">Warning</span>
+                <span>Claude Code project: unpinned 'npx -y' without @version</span>
+              </div>
+              <div class="plate-row">
+                <span class="pill pill-unknown">Unknown</span>
+                <span>Docker daemon inspection incomplete · <a href="./unknowns.html#docker">next step</a></span>
+              </div>
+              <div class="plate-row">
+                <span class="pill pill-passed">Passed</span>
+                <span>UFW firewall service is active</span>
+              </div>
+            </div>
+            <div class="plate-foot">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="1.5" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
+              <span>Browser-only · <code>connect-src 'none'</code></span>
+            </div>
+          </div>
+          <div class="plate-copy">
+            <span class="eyebrow">Report viewer</span>
             <h2 id="plate-heading">Plate your<br /><span>report.</span></h2>
             <p class="lead">
-              Save a JSON report and open it in the viewer. Findings get grouped
-              by check, unknowns link to their fix, and you can copy a clean
-              summary for an issue or a teammate.
+              Drop a saved JSON report into the browser viewer. Findings group by
+              check with inline fix hints, unknowns link straight to their
+              diagnostics, and you can copy clean Markdown in one click.
             </p>
-            <ol class="plate-steps">
-              <li><span>01</span><div>Run <code>bash iscooked.com --json &gt; cooked.json</code></div></li>
-              <li><span>02</span><div>Drop <code>cooked.json</code> into the viewer.</div></li>
-              <li><span>03</span><div>The file is read by your browser. The viewer page blocks all network requests.</div></li>
-            </ol>
+            <div class="plate-cmd">
+              <code>bash iscooked.com --json &gt; cooked.json</code>
+            </div>
             <a class="button button-primary" href="./report.html"
               >Open the report viewer
               <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 12h15m-6-6 6 6-6 6" /></svg
             ></a>
           </div>
-          <div class="plate-preview" aria-label="Report viewer preview">
-            <div class="plate-row"><span class="pill pill-critical">Critical</span><span>Port 8000 listens on all interfaces</span></div>
-            <div class="plate-row"><span class="pill pill-critical">Critical</span><span>Files in /srv/models are world-writable</span></div>
-            <div class="plate-row"><span class="pill pill-warning">Warning</span><span>Ollama model list needs no authentication</span></div>
-            <div class="plate-row"><span class="pill pill-warning">Warning</span><span>Container uses host networking</span></div>
-            <div class="plate-row"><span class="pill pill-unknown">Unknown</span><span>Docker daemon inspection incomplete · <a href="./unknowns.html#docker">next step</a></span></div>
-            <div class="plate-row"><span class="pill pill-passed">Passed</span><span>UFW firewall is active</span></div>
-            <div class="plate-row"><span class="pill pill-skipped">Skipped</span><span>No GPU devices detected</span></div>
-          </div>
         </div>
       </section>
 
-      <section class="install container section" id="install" aria-labelledby="install-heading">
+      <section class="install-band" id="install" aria-labelledby="install-heading">
+      <div class="install container section">
         <div class="install-intro">
           <span class="eyebrow">Run it</span>
           <h2 id="install-heading">Your machine.<br /><span>Your scan.</span></h2>
@@ -515,8 +552,8 @@
           <div class="command-panel">
             <div class="install-tabs enhancement" role="group" aria-label="Installation method" hidden>
               <button type="button" data-install="quick" aria-pressed="true" aria-controls="install-quick">Quick run</button
-              ><button type="button" data-install="inspect" aria-pressed="false" aria-controls="install-inspect">Download &amp; read</button
-              ><button type="button" data-install="json" aria-pressed="false" aria-controls="install-json">Save a report</button>
+              ><button type="button" data-install="inspect" aria-pressed="false" aria-controls="install-inspect">Download &amp; verify</button
+              ><button type="button" data-install="json" aria-pressed="false" aria-controls="install-json">Reports &amp; flags</button>
             </div>
             <div id="install-quick" class="install-method" data-method="quick">
               <h3 class="method-heading">Quick run</h3>
@@ -527,51 +564,61 @@
               </div>
             </div>
             <div id="install-inspect" class="install-method" data-method="inspect">
-              <h3 class="method-heading">Download &amp; read</h3>
-              <p class="command-description">1. Download the script and read it.</p>
+              <h3 class="method-heading">Download &amp; verify</h3>
+              <p class="command-description">1. Download the script, verify its SHA-256 checksum, and read it.</p>
               <div class="command-box">
                 <pre><code id="inspect-command">curl -fsSL https://iscooked.com/iscooked.com -o iscooked.com &amp;&amp;
+curl -fsSL https://iscooked.com/iscooked.com.sha256 -o iscooked.com.sha256 &amp;&amp;
+sha256sum -c iscooked.com.sha256 &amp;&amp;
 less iscooked.com</code></pre>
-                <button class="copy-button enhancement" type="button" data-copy="inspect-command" aria-label="Copy download and read command" hidden>Copy</button>
+                <button class="copy-button enhancement" type="button" data-copy="inspect-command" aria-label="Copy download and verify command" hidden>Copy</button>
               </div>
-              <p class="command-description">2. Start it when you are ready.</p>
+              <p class="command-description">2. Start it when you are ready (on macOS use <code>shasum -a 256 -c iscooked.com.sha256</code>).</p>
               <div class="command-box">
                 <pre><code id="run-command">bash iscooked.com</code></pre>
                 <button class="copy-button enhancement" type="button" data-copy="run-command" aria-label="Copy run command" hidden>Copy</button>
               </div>
             </div>
             <div id="install-json" class="install-method" data-method="json">
-              <h3 class="method-heading">Save a report</h3>
-              <p class="command-description">1. Write one JSON report. Requires Python 3.</p>
+              <h3 class="method-heading">Reports &amp; flags</h3>
+              <p class="command-description">1. Save a JSON report (requires Python 3) and open it in the <a href="./report.html">report viewer</a>.</p>
               <div class="command-box">
                 <pre><code id="json-command">bash iscooked.com --json &gt; cooked.json</code></pre>
                 <button class="copy-button enhancement" type="button" data-copy="json-command" aria-label="Copy JSON report command" hidden>Copy</button>
               </div>
-              <p class="command-description">2. Open it in the <a href="./report.html">report viewer</a>. Add <code>--fail-on critical</code> to exit 1 when a critical finding occurs.</p>
+              <p class="command-description">2. Filter to coding-agent checks, hide clean lines, or diff against a prior run.</p>
+              <div class="command-box">
+                <pre><code id="flags-command">bash iscooked.com --problems-only --only mcp,agents,sensitive --diff cooked.json</code></pre>
+                <button class="copy-button enhancement" type="button" data-copy="flags-command" aria-label="Copy CLI filter and diff command" hidden>Copy</button>
+              </div>
             </div>
             <div class="command-footer">
-              <span>Linux or macOS · Bash 4+</span><a href="./iscooked.com">Read the source <span aria-hidden="true">↗</span></a>
+              <span>Linux or macOS · Bash 3.2+</span><a href="./iscooked.com">Read the source <span aria-hidden="true">↗</span></a>
             </div>
             <p class="copy-status" id="copy-status" aria-live="polite" role="status"></p>
           </div>
           <div class="requirements">
             <p>
-              <strong>Before you run it:</strong> run <code>bash --version</code>.
-              The scanner requires Bash 4 or later. On macOS, the system Bash can
-              be too old. Use the path to your newer Bash executable if necessary.
+              <strong>Runs out of the box:</strong> requires Bash 3.2 or later,
+              so it runs on both Linux and the built-in macOS Bash with zero
+              extra installs.
             </p>
             <p>
-              Python 3 enables structured checks. Missing optional tools cause
-              skipped checks. <a href="./unknowns.html">Unknown or skipped results? Find the next step.</a>
+              Python 3 enables structured MCP, coding-agent, and JSON report
+              checks. Missing optional tools cause skipped checks.
+              <a href="./unknowns.html">Unknown or skipped results? Find the next step.</a>
             </p>
             <p>
-              Use <code>bash iscooked.com --help</code> for options.
+              Use <code>bash iscooked.com --help</code> for all flags
+              (<code>--only</code>, <code>--skip</code>, <code>--problems-only</code>,
+              <code>--diff</code>, <code>--fail-on</code>).
               <a href="https://github.com/johnpippett/iscooked#requirements">Full requirements ↗</a>
             </p>
           </div>
           <!-- prettier-ignore -->
-          <div class="hero-badge">Open source · MIT License · <span>v1.3.1</span></div>
+          <div class="hero-badge">Open source · MIT License · <span>v1.4.0</span></div>
         </div>
+      </div>
       </section>
 
       <section class="faq container" aria-labelledby="faq-heading">
@@ -606,9 +653,10 @@ less iscooked.com</code></pre>
             <details>
               <summary>What does the score mean?</summary>
               <p>
-                Critical findings add 10 points. Warnings and unknown findings add
-                4. Passed and skipped checks add none. The maximum is 100. A low
-                score does not establish that your system is safe.
+                Critical findings add 10 points. Warnings add 4. Unknown, passed,
+                and skipped results add 0, while staying visible in the counts.
+                The maximum is 100. A low score does not establish that your
+                system is safe.
               </p>
             </details>
             <details>

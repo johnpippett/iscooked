@@ -70,7 +70,7 @@ def test_host_root_mount_mode(rw, score, word):
 def test_host_root_unknown_mode_counts_incomplete_check():
     result = docker_check('/|/host|unknown|bind')
     assert 'UNKNOWN' in result.stdout_plain
-    assert 'SCORE=4' in result.stdout_plain
+    assert 'SCORE=0' in result.stdout_plain
 
 
 def test_duplicate_socket_mount_is_not_scored_twice():
@@ -89,7 +89,7 @@ def test_inspection_failure_counts_unknown_without_inventing_root(failure):
     result = docker_check(failure=failure)
     assert result.returncode == 0, result.stderr_plain
     assert 'UNKNOWN' in result.stdout_plain
-    assert 'SCORE=4' in result.stdout_plain
+    assert 'SCORE=0' in result.stdout_plain
     assert 'running as root' not in result.stdout_plain
 
 
@@ -179,7 +179,7 @@ def test_host_root_repeated_source_reports_strongest_access_once(records):
 def test_unsupported_mount_type_is_incomplete_not_host_root_access():
     result = docker_check('/|/host|true|unexpected')
     assert 'UNKNOWN' in result.stdout_plain
-    assert 'SCORE=4' in result.stdout_plain
+    assert 'SCORE=0' in result.stdout_plain
     assert 'read-write' not in result.stdout_plain
 
 

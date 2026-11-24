@@ -36,12 +36,13 @@ def test_no_network_debugging_flag(args):
 def test_incomplete_inspection(failure):
     r=check(failure=failure)
     assert 'UNKNOWN' in r.stdout_plain
-    assert 'SCORE=4' in r.stdout_plain
+    assert 'SCORE=0' in r.stdout_plain
 
 @pytest.mark.parametrize('body', ['{}','[]','invalid', '{"Browser":"generic server","Protocol-Version":"1.3"}', '{"Browser":"Chrome/1"}'])
 def test_unidentified_metadata_is_not_browser_finding(body):
     r=check(body=body)
-    assert 'SCORE=4' in r.stdout_plain
+    assert 'UNKNOWN' in r.stdout_plain
+    assert 'SCORE=0' in r.stdout_plain
     assert 'COOKED' not in r.stdout_plain
 
 
@@ -52,7 +53,8 @@ def test_unrelated_process_does_not_trigger_even_on_debugging_port():
 
 def test_pid_mismatch_not_confirmed_browser():
     r=check(pid=456)
-    assert 'SCORE=4' in r.stdout_plain
+    assert 'UNKNOWN' in r.stdout_plain
+    assert 'SCORE=0' in r.stdout_plain
 
 
 def test_separate_argument_and_netstat_ipv6():
@@ -102,7 +104,7 @@ def test_oversized_process_output_is_incomplete_inspection():
     r = source_and_run('check_browser_debugging; echo SCORE=$SCORE',
         mocks={'ps': 'head -c 4194305 /dev/zero'})
     assert 'UNKNOWN' in r.stdout_plain
-    assert 'SCORE=4' in r.stdout_plain
+    assert 'SCORE=0' in r.stdout_plain
 
 
 @pytest.mark.parametrize('args', [
@@ -111,7 +113,7 @@ def test_oversized_process_output_is_incomplete_inspection():
 ])
 def test_unquoted_apostrophe_keeps_browser_candidate_unknown(args):
     r = check(args=args)
-    assert 'UNKNOWN' in r.stdout_plain and 'SCORE=4' in r.stdout_plain
+    assert 'UNKNOWN' in r.stdout_plain and 'SCORE=0' in r.stdout_plain
     assert 'SKIP' not in r.stdout_plain and "O'Brien" not in r.stdout_plain
 
 

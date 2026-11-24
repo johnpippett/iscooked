@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# iscooked.com — Am I Cooked? Local AI Security Scanner
+# iscooked.com — Am I Cooked? AI & Coding Agent Security Scanner
 # https://iscooked.com | MIT License
 #
-# Examines local AI settings for security and privacy risks.
+# Examines coding agent and local AI setups for security and privacy risks.
 # Reports stay local. Selected probes read service metadata.
 
 set -euo pipefail
@@ -10,7 +10,7 @@ set -euo pipefail
 PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 export PATH
 
-VERSION="1.3.1"
+VERSION="1.4.0"
 
 # ─── Colors & Formatting ───────────────────────────────────────────────────────
 
@@ -42,6 +42,13 @@ SCORE=0
 OUTPUT_FORMAT=text
 FAIL_ON=none
 COLOR_MODE=auto
+FULL_SCAN=false
+PROBLEMS_ONLY=false
+ONLY_CHECKS=""
+SKIP_CHECKS=""
+DIFF_FILE=""
+DIFF_JSON=""
+SECTION_PRINTED=false
 CURRENT_CHECK_ID=""
 CURRENT_CHECK_TITLE=""
 CURRENT_AREA_INDEX=-1
@@ -56,6 +63,8 @@ FINDING_CHECK_TITLES=()
 FINDING_STATUSES=()
 FINDING_MESSAGES=()
 FINDING_POINTS=()
+FINDING_HINTS=()
+EXPOSED_CRITICAL_PORTS=()
 
 # ─── OS Detection ──────────────────────────────────────────────────────────────
 
@@ -82,7 +91,7 @@ banner() {
 
 BANNER
     echo -e "${RESET}"
-    echo -e "${DIM}  Am I Cooked? — Local AI Security Scanner v${VERSION}${RESET}"
+    echo -e "${DIM}  Am I Cooked? — AI & Coding Agent Security Scanner v${VERSION}${RESET}"
     echo -e "${DIM}  https://iscooked.com${RESET}"
     echo ""
     echo -e "  ${CYAN}${BOLD}Scanning your setup...${RESET}"
@@ -100,6 +109,12 @@ draw_line() {
     echo "$line"
 }
 
+print_section_header() {
+    echo ""
+    echo -e "  ${MAGENTA}${BOLD}[${CURRENT_CHECK_ID}]${RESET} ${WHITE}${BOLD}${CURRENT_CHECK_TITLE}${RESET}"
+    echo -e "  ${DIM}$(draw_line)${RESET}"
+}
+
 section() {
     local same_area=false area_index
     if [[ "$CURRENT_CHECK_ID" == "$1" && "$CURRENT_CHECK_TITLE" == "$2" && "$CURRENT_AREA_INDEX" -ge 0 ]]; then
@@ -109,12 +124,14 @@ section() {
     CURRENT_CHECK_TITLE="$2"
     if [[ "$same_area" == false ]]; then
         CURRENT_AREA_INDEX=-1
-        for area_index in "${!STARTED_AREA_IDS[@]}"; do
-            if [[ "${STARTED_AREA_IDS[area_index]}" == "$1" ]]; then
-                CURRENT_AREA_INDEX="$area_index"
-                break
-            fi
-        done
+        if [[ "${#STARTED_AREA_IDS[@]}" -gt 0 ]]; then
+            for area_index in "${!STARTED_AREA_IDS[@]}"; do
+                if [[ "${STARTED_AREA_IDS[area_index]}" == "$1" ]]; then
+                    CURRENT_AREA_INDEX="$area_index"
+                    break
+                fi
+            done
+        fi
         if [[ "$CURRENT_AREA_INDEX" -lt 0 ]]; then
             CURRENT_AREA_INDEX="$STARTED_AREA_COUNT"
             STARTED_AREA_IDS[CURRENT_AREA_INDEX]="$1"
@@ -124,12 +141,13 @@ section() {
             AREA_SKIP_FLAGS[CURRENT_AREA_INDEX]=0
             STARTED_AREA_COUNT=$((STARTED_AREA_COUNT + 1))
         fi
+        SECTION_PRINTED=false
     fi
     [[ "$same_area" == true ]] && return 0
     [[ "$OUTPUT_FORMAT" == text ]] || return 0
-    echo ""
-    echo -e "  ${MAGENTA}${BOLD}[$1]${RESET} ${WHITE}${BOLD}$2${RESET}"
-    echo -e "  ${DIM}$(draw_line)${RESET}"
+    [[ "$PROBLEMS_ONLY" == false ]] || return 0
+    print_section_header
+    SECTION_PRINTED=true
 }
 
 check_area_metadata() {
@@ -148,16 +166,88 @@ check_area_metadata() {
         check_ollama_config) CHECK_METADATA_ID="12"; CHECK_METADATA_TITLE="Ollama-Specific Checks" ;;
         check_browser_debugging) CHECK_METADATA_ID="13"; CHECK_METADATA_TITLE="Browser Remote Debugging" ;;
         check_mcp_config) CHECK_METADATA_ID="14"; CHECK_METADATA_TITLE="MCP Configuration" ;;
-        check_agent_gateway) CHECK_METADATA_ID="15"; CHECK_METADATA_TITLE="Agent Gateway Configuration" ;;
+        check_agent_gateway) CHECK_METADATA_ID="15"; CHECK_METADATA_TITLE="Coding Agent Permissions & Gateways" ;;
         check_model_code_execution) CHECK_METADATA_ID="16"; CHECK_METADATA_TITLE="Remote Model Code" ;;
         check_runtime_versions) CHECK_METADATA_ID="17"; CHECK_METADATA_TITLE="Runtime Versions" ;;
         *) return 2 ;;
     esac
 }
 
+resolve_check_token() {
+    case "$1" in
+        01|1|network|network_exposure) printf '01' ;;
+        02|2|api|api_auth|auth) printf '02' ;;
+        03|3|models|model_permissions) printf '03' ;;
+        04|4|docker|containers|docker_risks) printf '04' ;;
+        05|5|gpu|gpu_exposure) printf '05' ;;
+        06|6|telemetry) printf '06' ;;
+        07|7|firewall) printf '07' ;;
+        08|8|ssl|tls|ssl_tls) printf '08' ;;
+        09|9|processes|procs) printf '09' ;;
+        10|sensitive|files|env|sensitive_files) printf '10' ;;
+        11|history|logs|history_logs) printf '11' ;;
+        12|ollama|ollama_config) printf '12' ;;
+        13|browser|browser_debugging) printf '13' ;;
+        14|mcp|mcp_config) printf '14' ;;
+        15|agents|agent|gateway|agent_gateway) printf '15' ;;
+        16|model-code|model_code|remote-code|model_code_execution) printf '16' ;;
+        17|versions|runtime|runtime_versions) printf '17' ;;
+        *) return 2 ;;
+    esac
+}
+
+parse_check_list() {
+    local csv="$1" token resolved out="" IFS=','
+    [[ -n "$csv" ]] || return 2
+    for token in $csv; do
+        [[ -n "$token" ]] || return 2
+        resolved=$(resolve_check_token "$token") || return 2
+        out="${out:+${out},}${resolved}"
+    done
+    printf '%s' "$out"
+}
+
+check_selected() {
+    local id="$1" item matched=false
+    if [[ -n "$ONLY_CHECKS" ]]; then
+        local IFS=','
+        for item in $ONLY_CHECKS; do
+            if [[ "$item" == "$id" ]]; then
+                matched=true
+                break
+            fi
+        done
+        [[ "$matched" == true ]] || return 1
+    fi
+    if [[ -n "$SKIP_CHECKS" ]]; then
+        local IFS=','
+        for item in $SKIP_CHECKS; do
+            if [[ "$item" == "$id" ]]; then
+                return 1
+            fi
+        done
+    fi
+    return 0
+}
+
+is_exposed_critical_port() {
+    local target="$1" port
+    if [[ "${#EXPOSED_CRITICAL_PORTS[@]}" -gt 0 ]]; then
+        for port in "${EXPOSED_CRITICAL_PORTS[@]}"; do
+            if [[ "$port" == "$target" ]]; then
+                return 0
+            fi
+        done
+    fi
+    return 1
+}
+
 run_check() {
     local check_name="$1" results_before
     check_area_metadata "$check_name"
+    if ! check_selected "$CHECK_METADATA_ID"; then
+        return 0
+    fi
     section "$CHECK_METADATA_ID" "$CHECK_METADATA_TITLE"
     results_before=$TOTAL_CHECKS
     "$check_name"
@@ -167,41 +257,46 @@ run_check() {
 }
 
 result_cooked() {
-    record_result critical "$1"
+    record_result critical "$1" "${2:-}"
 }
 
 result_warming() {
-    record_result warning "$1"
+    record_result warning "$1" "${2:-}"
 }
 
 result_safe() {
-    record_result passed "$1"
+    record_result passed "$1" "${2:-}"
 }
 
 result_skip() {
-    record_result skipped "$1"
+    record_result skipped "$1" "${2:-}"
 }
 
 result_unknown() {
-    record_result unknown "$1"
+    record_result unknown "$1" "${2:-}"
 }
 
 record_result() {
-    local status="$1" message points=0 label
+    local status="$1" message hint points=0 label
     message=$(sanitize_result_message "$2")
+    hint=$(sanitize_result_message "${3:-}")
     case "$status" in
         critical) COOKED_COUNT=$((COOKED_COUNT + 1)); points=10; label="$COOKED" ;;
         warning) WARMING_COUNT=$((WARMING_COUNT + 1)); points=4; label="$WARMING" ;;
         passed) SAFE_COUNT=$((SAFE_COUNT + 1)); label="$SAFE" ;;
-        unknown) UNKNOWN_COUNT=$((UNKNOWN_COUNT + 1)); points=4; label="$UNKNOWN" ;;
+        unknown) UNKNOWN_COUNT=$((UNKNOWN_COUNT + 1)); points=0; label="$UNKNOWN" ;;
         skipped) SKIPPED_COUNT=$((SKIPPED_COUNT + 1)); label="${DIM}⏭  SKIP${RESET}" ;;
         *) return 2 ;;
     esac
+    if [[ -n "${4:-}" ]]; then
+        points="$4"
+    fi
     FINDING_CHECK_IDS[TOTAL_CHECKS]="$CURRENT_CHECK_ID"
     FINDING_CHECK_TITLES[TOTAL_CHECKS]="$CURRENT_CHECK_TITLE"
     FINDING_STATUSES[TOTAL_CHECKS]="$status"
     FINDING_MESSAGES[TOTAL_CHECKS]="$message"
     FINDING_POINTS[TOTAL_CHECKS]="$points"
+    FINDING_HINTS[TOTAL_CHECKS]="$hint"
     TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
     SCORE=$((SCORE + points))
     if [[ "$CURRENT_AREA_INDEX" -ge 0 ]]; then
@@ -212,23 +307,34 @@ record_result() {
         esac
     fi
     if [[ "$OUTPUT_FORMAT" == text ]]; then
-        printf '%b  %s\n' "  ${label}" "$message"
+        if [[ "$PROBLEMS_ONLY" == false || "$status" == critical || "$status" == warning || "$status" == unknown ]]; then
+            if [[ "$SECTION_PRINTED" == false ]]; then
+                print_section_header
+                SECTION_PRINTED=true
+            fi
+            printf '%b  %s\n' "  ${label}" "$message"
+            if [[ -n "$hint" && "$status" != passed ]]; then
+                printf '      %b\n' "${DIM}↳ ${hint}${RESET}"
+            fi
+        fi
     fi
 }
 
 coverage_count() {
     local kind="$1" area_index flag count=0
-    for area_index in "${!STARTED_AREA_IDS[@]}"; do
-        case "$kind" in
-            observations) flag="${AREA_OBSERVATION_FLAGS[area_index]:-0}" ;;
-            unknown) flag="${AREA_UNKNOWN_FLAGS[area_index]:-0}" ;;
-            skips) flag="${AREA_SKIP_FLAGS[area_index]:-0}" ;;
-            *) return 2 ;;
-        esac
-        if [[ "$flag" == 1 ]]; then
-            count=$((count + 1))
-        fi
-    done
+    if [[ "${#STARTED_AREA_IDS[@]}" -gt 0 ]]; then
+        for area_index in "${!STARTED_AREA_IDS[@]}"; do
+            case "$kind" in
+                observations) flag="${AREA_OBSERVATION_FLAGS[area_index]:-0}" ;;
+                unknown) flag="${AREA_UNKNOWN_FLAGS[area_index]:-0}" ;;
+                skips) flag="${AREA_SKIP_FLAGS[area_index]:-0}" ;;
+                *) return 2 ;;
+            esac
+            if [[ "$flag" == 1 ]]; then
+                count=$((count + 1))
+            fi
+        done
+    fi
     printf '%s' "$count"
 }
 
@@ -457,11 +563,14 @@ AI_SERVICE_PORTS="11434:Ollama
 7860:Gradio / Stable Diffusion WebUI
 8188:ComfyUI
 3000:Open WebUI
+3001:AnythingLLM
 1234:LM Studio (alt)
 8000:vLLM / FastChat
 5001:LocalAI
 30000:SGLang
 4000:LiteLLM proxy
+4096:OpenCode Server
+18789:OpenClaw Gateway
 50052:llama.cpp RPC server
 9090:Prometheus (AI metrics)"
 
@@ -519,19 +628,20 @@ check_network_exposure() {
         if [[ -n "$listen_line" ]]; then
             found_any=true
             if is_bound_all_interfaces "$listen_line" "$port"; then
-                result_cooked "Unidentified service on port ${port} (commonly ${name}) is listening on ALL interfaces"
+                EXPOSED_CRITICAL_PORTS+=("$port")
+                result_cooked "Unidentified service on port ${port} (commonly ${name}) is listening on ALL interfaces" "Bind ${name} to 127.0.0.1 or restrict port ${port} with a firewall"
             elif is_bound_loopback_only "$listen_line" "$port"; then
                 result_safe "Unidentified service on port ${port} (commonly ${name}) is bound to localhost only"
             else
                 local bind_host
                 bind_host=$(get_non_loopback_listen_host "$listen_line" "$port" || echo "non-loopback interface")
-                result_warming "Unidentified service on port ${port} (commonly ${name}) is bound to non-loopback interface ${bind_host}"
+                result_warming "Unidentified service on port ${port} (commonly ${name}) is bound to non-loopback interface ${bind_host}" "Verify port ${port} requires network access; bind to 127.0.0.1 if local-only"
             fi
         fi
     done <<< "$ai_ports"
 
     if [[ "$listener_query_failed" == "true" ]]; then
-        result_unknown "Network listener inspection failed — exposure status UNKNOWN"
+        result_unknown "Network listener inspection failed — exposure status UNKNOWN" "Run ss -tlnp (Linux) or netstat -an -ptcp (macOS); see https://iscooked.com/unknowns#network"
     elif [[ "$listener_query_unavailable" == "true" ]]; then
         result_skip "Network listener inspection requires ss or netstat"
     elif [[ "$found_any" == "false" ]]; then
@@ -668,18 +778,23 @@ check_api_auth() {
             case "$status" in
                 200)
                     if [[ -z "$metadata" ]]; then
-                        result_unknown "${identity} ${route} on port ${port}: authentication inconclusive (unexpected model-list response)"
+                        result_unknown "${identity} ${route} on port ${port}: authentication inconclusive (unexpected model-list response)" "Verify service on port ${port}; see https://iscooked.com/unknowns#network"
                     elif [[ "$listener_inventory_status" != "ok" ]]; then
-                        result_unknown "${identity} ${route} on port ${port} responds without authentication; bind exposure is UNKNOWN"
+                        result_unknown "${identity} ${route} on port ${port} responds without authentication; bind exposure is UNKNOWN" "Check bind address with ss -tlnp; see https://iscooked.com/unknowns#network"
                     elif [[ "$exposed" == "true" ]]; then
-                        result_cooked "${identity} ${route} on port ${port} accessible without authentication on a non-loopback interface; correlate with network exposure (same endpoint)"
+                        local api_hint="Require authentication or bind ${identity} to 127.0.0.1"
+                        if [[ "$FULL_SCAN" == "true" ]] && is_exposed_critical_port "$port"; then
+                            record_result critical "${identity} ${route} on port ${port} accessible without authentication on a non-loopback interface; correlated with Check 01 (+4 pts)" "$api_hint" 4
+                        else
+                            result_cooked "${identity} ${route} on port ${port} accessible without authentication on a non-loopback interface; correlate with network exposure (same endpoint)" "$api_hint"
+                        fi
                     else
-                        result_warming "${identity} ${route} on port ${port} accessible without authentication on localhost; other routes were not tested"
+                        result_warming "${identity} ${route} on port ${port} accessible without authentication on localhost; other routes were not tested" "Put ${identity} behind an authenticated proxy or keep it bound strictly to localhost"
                     fi ;;
                 401) result_safe "${identity} ${route} on port ${port} requires authentication (HTTP 401); other routes were not tested" ;;
                 403) result_safe "${identity} ${route} on port ${port} denied access (HTTP 403); other routes were not tested" ;;
-                3??) result_unknown "${identity} ${route} on port ${port}: authentication inconclusive (HTTP ${status} redirect, not followed)" ;;
-                *) result_unknown "${identity} ${route} on port ${port}: authentication inconclusive (HTTP ${status}; unreachable, failed, or unsupported endpoint)" ;;
+                3??) result_unknown "${identity} ${route} on port ${port}: authentication inconclusive (HTTP ${status} redirect, not followed)" "Check redirect target on port ${port}; see https://iscooked.com/unknowns#network" ;;
+                *) result_unknown "${identity} ${route} on port ${port}: authentication inconclusive (HTTP ${status}; unreachable, failed, or unsupported endpoint)" "Inspect ${identity} status on port ${port}; see https://iscooked.com/unknowns#network" ;;
             esac
         done <<< "$lines"
     done
@@ -729,7 +844,7 @@ ${brew_prefix}/var/ollama/models"
             local wr_count
             if wr_count=$(find "$dir" -type f -perm -o+r 2>/dev/null | wc -l); then
                 if [[ "$wr_count" -gt 0 ]]; then
-                    result_warming "Model directory ${dir} is world-readable (${wr_count} files)"
+                    result_warming "Model directory ${dir} is world-readable (${wr_count} files)" "Restrict file access: chmod -R o-rwx \"${dir}\""
                 elif [[ ! -r "$dir" || ! -x "$dir" ]]; then
                     result_skip "Model directory ${dir} is not readable — inspection incomplete, permissions unknown"
                 else
@@ -742,9 +857,9 @@ ${brew_prefix}/var/ollama/models"
             # Check if world-writable
             local world_writable_count
             if ! world_writable_count=$(find "$dir" -maxdepth 2 -perm -o+w 2>/dev/null | wc -l); then
-                result_unknown "Model directory ${dir} world-write inspection incomplete"
+                result_unknown "Model directory ${dir} world-write inspection incomplete" "Inspect directory permissions with ls -ld \"${dir}\"; see https://iscooked.com/unknowns#files"
             elif [[ "$world_writable_count" -gt 0 ]]; then
-                result_cooked "Files in ${dir} are world-writable!"
+                result_cooked "Files in ${dir} are world-writable!" "Remove world-write access: chmod -R o-w \"${dir}\""
             fi
         fi
     done <<< "$model_dirs_list"
@@ -781,8 +896,13 @@ check_docker_risks() {
 
     # Do not confuse a failed daemon/list operation with an empty inventory.
     local security_options daemon_endpoint="${DOCKER_HOST:-}" daemon_mode=unknown
-    if ! security_options=$(docker_read_metadata info --format '{{json .SecurityOptions}}' 2>/dev/null); then
-        result_unknown "Docker daemon inspection incomplete — UNKNOWN (unreachable or bounded command unavailable)"
+    if ! security_options=$(docker_read_metadata info --format '{{json .SecurityOptions}}' 2>&1); then
+        if printf '%s' "$security_options" | grep -qiE 'cannot connect to the docker daemon|is the docker daemon running|no such file or directory|connection refused' \
+            && ! printf '%s' "$security_options" | grep -qi 'permission denied'; then
+            result_skip "Docker daemon is not running"
+        else
+            result_unknown "Docker daemon inspection incomplete — UNKNOWN (unreachable or bounded command unavailable)" "Run docker info --format '{{json .SecurityOptions}}'; see https://iscooked.com/unknowns#docker"
+        fi
         return
     fi
 
@@ -829,7 +949,7 @@ except (ValueError, TypeError):
         fi
         configured_user=${user%%:*}
         if [[ -z "$configured_user" || "$configured_user" == "root" || "$configured_user" == "0" ]]; then
-            result_cooked "Container '${cname}' is running as root"
+            result_cooked "Container '${cname}' is running as root" "Set a non-root USER in the container image or --user flag"
         else
             result_safe "Container '${cname}' is running as user '${user}'"
         fi
@@ -839,19 +959,19 @@ except (ValueError, TypeError):
         # Check privileged mode
         local privileged
         if ! privileged=$(docker_read_metadata inspect --format '{{.HostConfig.Privileged}}' "$cname" 2>/dev/null); then
-            result_unknown "Container '${cname}' privileged status UNKNOWN (inspection incomplete)"
+            result_unknown "Container '${cname}' privileged status UNKNOWN (inspection incomplete)" "Run docker inspect '${cname}'; see https://iscooked.com/unknowns#docker"
         fi
         if [[ "$privileged" == "true" ]]; then
-            result_cooked "Container '${cname}' is running in PRIVILEGED mode"
+            result_cooked "Container '${cname}' is running in PRIVILEGED mode" "Remove --privileged from container '${cname}' and grant only needed capabilities"
         fi
 
         # Check host network
         local network
         if ! network=$(docker_read_metadata inspect --format '{{.HostConfig.NetworkMode}}' "$cname" 2>/dev/null); then
-            result_unknown "Container '${cname}' network mode UNKNOWN (inspection incomplete)"
+            result_unknown "Container '${cname}' network mode UNKNOWN (inspection incomplete)" "Run docker inspect '${cname}'; see https://iscooked.com/unknowns#docker"
         fi
         if [[ "$network" == "host" ]]; then
-            result_warming "Container '${cname}' is using host networking"
+            result_warming "Container '${cname}' is using host networking" "Use a bridge network and publish ports explicitly to 127.0.0.1"
         fi
 
         # Include mode and destination: RO sockets still permit daemon API calls.
@@ -908,31 +1028,35 @@ except (ValueError, TypeError):
             # Score each source once, selecting its strongest observed access.
             # Indexed arrays avoid evaluating untrusted paths as array expressions.
             mount_index=${#mount_sources[@]}
-            for candidate_index in "${!mount_sources[@]}"; do
-                if [[ "${mount_sources[candidate_index]}" == "$source" ]]; then
-                    mount_index=$candidate_index
-                    break
-                fi
-            done
+            if [[ "${#mount_sources[@]}" -gt 0 ]]; then
+                for candidate_index in "${!mount_sources[@]}"; do
+                    if [[ "${mount_sources[candidate_index]}" == "$source" ]]; then
+                        mount_index=$candidate_index
+                        break
+                    fi
+                done
+            fi
             if [[ "$finding_level" -gt "${mount_levels[mount_index]:-0}" ]]; then
                 mount_sources[mount_index]=$source
                 mount_levels[mount_index]=$finding_level
                 mount_messages[mount_index]=$finding_message
             fi
         done <<< "$mounts"
-        for mount_index in "${!mount_sources[@]}"; do
-            case "${mount_levels[mount_index]}" in
-                4) result_cooked "${mount_messages[mount_index]}" ;;
-                3) result_warming "${mount_messages[mount_index]}" ;;
-                2)
-                    if [[ "$sensitive_reported" == false ]]; then
-                        result_warming "Container '${cname}' has sensitive host paths mounted"
-                        sensitive_reported=true
-                    fi
-                    ;;
-                1) result_unknown "${mount_messages[mount_index]}" ;;
-            esac
-        done
+        if [[ "${#mount_sources[@]}" -gt 0 ]]; then
+            for mount_index in "${!mount_sources[@]}"; do
+                case "${mount_levels[mount_index]}" in
+                    4) result_cooked "${mount_messages[mount_index]}" "Remove host root or Docker socket mount from container '${cname}'" ;;
+                    3) result_warming "${mount_messages[mount_index]}" "Avoid mounting host root or Docker sockets into AI containers" ;;
+                    2)
+                        if [[ "$sensitive_reported" == false ]]; then
+                            result_warming "Container '${cname}' has sensitive host paths mounted" "Mount only required project/model subdirectories instead of /etc, /root, or home"
+                            sensitive_reported=true
+                        fi
+                        ;;
+                    1) result_unknown "${mount_messages[mount_index]}" "Inspect mounts with docker inspect '${cname}'; see https://iscooked.com/unknowns#docker" ;;
+                esac
+            done
+        fi
 
     done <<< "$ai_containers"
 }
@@ -1145,9 +1269,9 @@ check_browser_debugging() {
     fi
     while IFS='|' read -r status message; do
         case "$status" in
-            cooked) result_cooked "$message" ;;
+            cooked) result_cooked "$message" "Bind browser debugging to 127.0.0.1 or use --remote-debugging-pipe" ;;
             safe) result_safe "$message" ;;
-            unknown) result_unknown "$message" ;;
+            unknown) result_unknown "$message" "Inspect browser flags and listeners; see https://iscooked.com/unknowns#network" ;;
             skip) result_skip "$message" ;;
         esac
     done <<< "$evidence"
@@ -1186,11 +1310,11 @@ check_gpu_exposure() {
         fi
 
         if [[ "$nvidia_listener_state" == "error" ]]; then
-            result_unknown "NVIDIA listener inspection failed — management port status UNKNOWN"
+            result_unknown "NVIDIA listener inspection failed — management port status UNKNOWN" "Run ss -tlnp; see https://iscooked.com/unknowns#network"
         elif [[ "$nvidia_listener_state" == "unavailable" ]]; then
             result_skip "NVIDIA listener inspection requires ss or netstat"
         elif [[ -n "$nvidia_listen" ]]; then
-            result_warming "NVIDIA management service has network-exposed ports"
+            result_warming "NVIDIA management service has network-exposed ports" "Bind NVIDIA management listeners to localhost or restrict with a firewall"
         else
             result_safe "NVIDIA GPU detected, no management ports exposed"
         fi
@@ -1199,11 +1323,11 @@ check_gpu_exposure() {
         if [[ "$OS_TYPE" == "linux" && -e /dev/nvidia0 ]]; then
             local nv_perms
             if ! nv_perms=$(get_file_perms /dev/nvidia0); then
-                result_unknown "/dev/nvidia0 permission inspection failed"
+                result_unknown "/dev/nvidia0 permission inspection failed" "Run ls -ld /dev/nvidia0; see https://iscooked.com/unknowns#files"
             elif [[ ! "$nv_perms" =~ ^[0-7]+$ ]]; then
-                result_unknown "/dev/nvidia0 returned an invalid permission value"
+                result_unknown "/dev/nvidia0 returned an invalid permission value" "Run ls -ld /dev/nvidia0; see https://iscooked.com/unknowns#files"
             elif [[ "${nv_perms: -1}" -ge 6 ]]; then
-                result_warming "/dev/nvidia0 is accessible to all users (mode ${nv_perms})"
+                result_warming "/dev/nvidia0 is accessible to all users (mode ${nv_perms})" "Restrict /dev/nvidia0 to the video/render group (chmod 660)"
             else
                 result_safe "/dev/nvidia0 has restrictive permissions (mode ${nv_perms})"
             fi
@@ -1216,11 +1340,11 @@ check_gpu_exposure() {
         if [[ -e /dev/dri/renderD128 ]]; then
             local render_perms
             if ! render_perms=$(get_file_perms /dev/dri/renderD128); then
-                result_unknown "/dev/dri/renderD128 permission inspection failed"
+                result_unknown "/dev/dri/renderD128 permission inspection failed" "Run ls -ld /dev/dri/renderD128; see https://iscooked.com/unknowns#files"
             elif [[ ! "$render_perms" =~ ^[0-7]+$ ]]; then
-                result_unknown "/dev/dri/renderD128 returned an invalid permission value"
+                result_unknown "/dev/dri/renderD128 returned an invalid permission value" "Run ls -ld /dev/dri/renderD128; see https://iscooked.com/unknowns#files"
             elif [[ "${render_perms: -1}" -ge 6 ]]; then
-                result_warming "/dev/dri/renderD128 is world-accessible (mode ${render_perms})"
+                result_warming "/dev/dri/renderD128 is world-accessible (mode ${render_perms})" "Restrict /dev/dri/renderD128 to the render group (chmod 660)"
             fi
         fi
     fi
@@ -1244,99 +1368,400 @@ check_mcp_config() {
         result_skip "MCP configuration inspection requires optional python3"
         return
     fi
-    local mcp_output mcp_severity mcp_message
+    local mcp_output mcp_severity mcp_message mcp_hint
     if ! mcp_output=$(python3 -I -B -S - 2>/dev/null <<'MCP_PY'
+import errno
+import ipaddress
 import json
 import os
 import re
 import stat
 import sys
+import urllib.parse
 from pathlib import Path
+
+try:
+    import tomllib
+except ImportError:
+    tomllib = None
 
 LIMIT = 1048576
 home = Path.home()
 cwd = Path.cwd()
+
+# Tuple: (path, label, schema_kind, project_local, strict_mcp_file)
 paths = [
-    (home / '.config/Claude/claude_desktop_config.json', 'Claude Desktop Linux'),
-    (home / 'Library/Application Support/Claude/claude_desktop_config.json', 'Claude Desktop macOS'),
-    (cwd / '.mcp.json', 'Claude Code project'),
-    (home / '.claude.json', 'Claude Code user'),
-    (home / '.cursor/mcp.json', 'Cursor user'),
-    (cwd / '.cursor/mcp.json', 'Cursor project'),
+    (home / '.config/Claude/claude_desktop_config.json', 'Claude Desktop Linux', 'mcpServers', False, False),
+    (home / 'Library/Application Support/Claude/claude_desktop_config.json', 'Claude Desktop macOS', 'mcpServers', False, False),
+    (cwd / '.mcp.json', 'Claude Code project', 'mcpServers', True, True),
+    (home / '.claude.json', 'Claude Code user', 'claude_user', False, False),
+    (home / '.cursor/mcp.json', 'Cursor user', 'mcpServers', False, True),
+    (cwd / '.cursor/mcp.json', 'Cursor project', 'mcpServers', True, True),
+    (home / '.config/opencode/opencode.json', 'OpenCode user', 'opencode_mcp', False, False),
+    (cwd / 'opencode.json', 'OpenCode project', 'opencode_mcp', True, False),
+    (home / '.codeium/windsurf/mcp_config.json', 'Windsurf user', 'mcpServers', False, True),
+    (home / '.config/zed/settings.json', 'Zed user', 'zed_context_servers', False, False),
+    (cwd / '.vscode/mcp.json', 'VS Code project', 'vscode_servers', True, True),
+    (home / '.config/Code/User/mcp.json', 'VS Code user (Linux)', 'vscode_servers', False, True),
+    (home / 'Library/Application Support/Code/User/mcp.json', 'VS Code user (macOS)', 'vscode_servers', False, True),
+    (home / '.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json', 'Cline (Linux)', 'mcpServers', False, True),
+    (home / 'Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json', 'Cline (macOS)', 'mcpServers', False, True),
+    (home / '.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json', 'Roo Code (Linux)', 'mcpServers', False, True),
+    (home / 'Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json', 'Roo Code (macOS)', 'mcpServers', False, True),
+    (home / '.codex/config.toml', 'Codex CLI', 'codex_toml', False, False),
+    (home / '.gemini/settings.json', 'Gemini CLI', 'mcpServers', False, False),
+    (home / '.gemini/antigravity/mcp_config.json', 'Antigravity', 'mcpServers', False, True),
 ]
 
-EMITTED = [0]
+COMMENT_RE = re.compile(r'"(?:\\.|[^"\\])*"|//[^\r\n]*|/\*[\s\S]*?\*/')
+COMMA_RE = re.compile(r'"(?:\\.|[^"\\])*"|(,)(\s*[}\]])')
 
-def emit(level, message):
-    EMITTED[0] += 1
-    print(level + '\t' + message)
+
+def parse_jsonc(raw_bytes):
+    text = raw_bytes.decode('utf-8-sig')
+    stripped = COMMENT_RE.sub(lambda m: m.group(0) if m.group(0).startswith('"') else ' ', text)
+    cleaned = COMMA_RE.sub(lambda m: m.group(2) if m.group(1) else m.group(0), stripped)
+    return json.loads(cleaned)
+
+
+def _strip_toml_comment(line):
+    in_dq = False
+    in_sq = False
+    escaped = False
+    for idx, ch in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+        if in_dq:
+            if ch == '\\':
+                escaped = True
+            elif ch == '"':
+                in_dq = False
+        elif in_sq:
+            if ch == "'":
+                in_sq = False
+        else:
+            if ch == '"':
+                in_dq = True
+            elif ch == "'":
+                in_sq = True
+            elif ch == '#':
+                return line[:idx]
+    return line
+
+
+def _split_toml_items(body):
+    items = []
+    buf = []
+    depth = 0
+    in_dq = False
+    in_sq = False
+    escaped = False
+    for ch in body:
+        if escaped:
+            buf.append(ch)
+            escaped = False
+            continue
+        if in_dq:
+            buf.append(ch)
+            if ch == '\\':
+                escaped = True
+            elif ch == '"':
+                in_dq = False
+            continue
+        if in_sq:
+            buf.append(ch)
+            if ch == "'":
+                in_sq = False
+            continue
+        if ch == '"':
+            in_dq = True
+        elif ch == "'":
+            in_sq = True
+        elif ch in '[{':
+            depth += 1
+        elif ch in ']}':
+            depth -= 1
+        elif ch == ',' and depth == 0:
+            item = ''.join(buf).strip()
+            if item:
+                items.append(item)
+            buf = []
+            continue
+        buf.append(ch)
+    tail = ''.join(buf).strip()
+    if tail:
+        items.append(tail)
+    return items
+
+
+def _parse_toml_val(val):
+    val = val.strip()
+    if not val:
+        raise ValueError()
+    if val == 'true':
+        return True
+    if val == 'false':
+        return False
+    if val.startswith('"') and val.endswith('"') and len(val) >= 2:
+        return json.loads(val)
+    if val.startswith("'") and val.endswith("'") and len(val) >= 2:
+        return val[1:-1]
+    if val.startswith('[') and val.endswith(']'):
+        return [_parse_toml_val(item) for item in _split_toml_items(val[1:-1])]
+    if val.startswith('{') and val.endswith('}'):
+        out = {}
+        for item in _split_toml_items(val[1:-1]):
+            k, sep, v = item.partition('=')
+            if not sep:
+                raise ValueError()
+            out[k.strip().strip('"\'')] = _parse_toml_val(v)
+        return out
+    if re.fullmatch(r'[+-]?\d+', val):
+        return int(val)
+    return val
+
+
+def parse_toml(raw_bytes):
+    text = raw_bytes.decode('utf-8-sig')
+    if tomllib is not None:
+        return tomllib.loads(text)
+    root = {}
+    cursor = root
+    for raw_line in text.splitlines():
+        line = _strip_toml_comment(raw_line).strip()
+        if not line:
+            continue
+        if line.startswith('[') and line.endswith(']'):
+            header = line[1:-1].strip()
+            if not header or header.startswith('['):
+                raise ValueError()
+            parts = [p.strip().strip('"\'') for p in header.split('.')]
+            cursor = root
+            for part in parts:
+                if part not in cursor or not isinstance(cursor[part], dict):
+                    cursor[part] = {}
+                cursor = cursor[part]
+        elif '=' in line:
+            k, _, v = line.partition('=')
+            cursor[k.strip().strip('"\'')] = _parse_toml_val(v)
+        else:
+            raise ValueError()
+    return root
+
+
+def emit(level, message, hint=''):
+    print(level + '\t' + message + '\t' + hint)
+
 
 def traversable(parents, gid=None):
     # Model a non-owner account in this group, or an unrelated local account.
     return all(s.st_mode & (stat.S_IXGRP if gid == s.st_gid else stat.S_IXOTH)
                for s in parents)
 
+
 def permissions(path, label, credentials):
+    emitted = False
     try:
         resolved = path.resolve(strict=True)
         s = resolved.stat()
         parents = [p.stat() for p in resolved.parents]
-        # Symlink traversal and ACLs cannot be conclusively modeled by mode bits.
-        original = [path, *path.parents]
-        has_links = any(p.is_symlink() for p in original)
-        has_acl = sys.platform == 'darwin'
+        xattr_paths = [resolved, *resolved.parents]
+        if path.is_symlink():
+            link_parent = path.parent.resolve(strict=True)
+            if link_parent not in xattr_paths:
+                xattr_paths.extend([link_parent, *link_parent.parents])
+        has_acl = False
         if hasattr(os, 'listxattr'):
-            for p in [resolved, *resolved.parents]:
-                has_acl |= any('acl' in name.lower() for name in os.listxattr(p))
-        if has_links or has_acl:
-            emit('unknown', label + ': ACL or symlink access needs manual permissions review')
-            return
+            for p in xattr_paths:
+                try:
+                    attrs = os.listxattr(p)
+                except OSError as exc:
+                    if exc.errno in (getattr(errno, 'ENOTSUP', 95), getattr(errno, 'EOPNOTSUPP', 95)):
+                        continue
+                    raise
+                if any('acl' in name.lower() for name in attrs):
+                    has_acl = True
+                    break
+        if has_acl:
+            emit('unknown', label + ': ACL permissions need manual permissions review',
+                 'Inspect ACLs with getfacl or ls -le; see https://iscooked.com/unknowns#files')
+            return True
+
+        def dir_replace_risk(dir_paths):
+            dir_stats = [p.stat() for p in dir_paths]
+            rw_world = any(d.st_mode & stat.S_IWOTH and not d.st_mode & stat.S_ISVTX
+                           and traversable(dir_stats[i:])
+                           for i, d in enumerate(dir_stats))
+            rw_group = any(d.st_mode & stat.S_IWGRP and not d.st_mode & stat.S_ISVTX
+                           and traversable(dir_stats[i:], d.st_gid)
+                           for i, d in enumerate(dir_stats))
+            return rw_world, rw_group
+
         world = traversable(parents)
         group = traversable(parents, s.st_gid)
-        # Any writable ancestor can replace its child, even if deeper paths
-        # are private. Sticky directories do not allow replacing owned children.
-        replace_world = any(parent.st_mode & stat.S_IWOTH
-                            and not parent.st_mode & stat.S_ISVTX
-                            and traversable(parents[i:])
-                            for i, parent in enumerate(parents))
-        replace_group = any(parent.st_mode & stat.S_IWGRP
-                            and not parent.st_mode & stat.S_ISVTX
-                            and traversable(parents[i:], parent.st_gid)
-                            for i, parent in enumerate(parents))
+        replace_world, replace_group = dir_replace_risk(resolved.parents)
+        if path.is_symlink():
+            lp = path.parent.resolve(strict=True)
+            lp_world, lp_group = dir_replace_risk([lp, *lp.parents])
+            replace_world |= lp_world
+            replace_group |= lp_group
+
         if (world and s.st_mode & stat.S_IWOTH) or replace_world:
-            emit('cooked', label + ': launch configuration is world-writable or replaceable; restrict file and parent directory permissions')
+            emit('cooked', label + ': launch configuration is world-writable or replaceable; restrict file and parent directory permissions',
+                 f'Run chmod 600 "{resolved}" and ensure parent directories are not world-writable')
+            emitted = True
         elif (group and s.st_mode & stat.S_IWGRP) or replace_group:
-            emit('warming', label + ': launch configuration is group-writable or replaceable; restrict access to trusted administrators')
+            emit('warming', label + ': launch configuration is group-writable or replaceable; restrict access to trusted administrators',
+                 f'Run chmod 600 "{resolved}" and tighten parent directory group permissions')
+            emitted = True
         if credentials:
             if world and s.st_mode & stat.S_IROTH:
-                emit('cooked', label + ': credential-bearing configuration is readable by other local users; use mode 600 and a private parent directory')
+                emit('cooked', label + ': credential-bearing configuration is readable by other local users; use mode 600 and a private parent directory',
+                     f'Run chmod 600 "{resolved}" and move secrets to environment variables')
+                emitted = True
             elif group and s.st_mode & stat.S_IRGRP:
-                emit('warming', label + ': credential-bearing configuration is group-readable; restrict access to the intended account')
+                emit('warming', label + ': credential-bearing configuration is group-readable; restrict access to the intended account',
+                     f'Run chmod 600 "{resolved}"')
+                emitted = True
     except OSError:
-        emit('unknown', label + ': effective permissions could not be inspected')
+        emit('unknown', label + ': effective permissions could not be inspected',
+             f'Check permissions with ls -ld "{path}"; see https://iscooked.com/unknowns#files')
+        emitted = True
+    return emitted
+
 
 def has_credentials(server):
     # Detect key names only, and never echo either names or values.
-    for field in ('env', 'headers'):
+    for field in ('env', 'environment', 'headers', 'http_headers'):
         values = server.get(field, {})
         if isinstance(values, dict):
             for key, value in values.items():
-                if re.search(r'key|token|secret|password|credential|authorization', key, re.I) and value:
-                    if not (isinstance(value, str) and value.startswith('${') and value.endswith('}')):
-                        return True
+                if re.search(r'key|token|secret|password|credential|authorization', str(key), re.I) and value:
+                    if isinstance(value, str):
+                        v = value.strip()
+                        if ((v.startswith('${') and v.endswith('}'))
+                                or (v.startswith('{env:') and v.endswith('}'))
+                                or re.fullmatch(r'\$[A-Za-z_][A-Za-z0-9_]*', v)):
+                            continue
+                    return True
     return False
 
+
+def is_loopback_url_host(host):
+    if not host:
+        return False
+    h = host.strip('[]').lower()
+    if h == 'localhost':
+        return True
+    try:
+        return ipaddress.ip_address(h).is_loopback
+    except ValueError:
+        return False
+
+
+def find_unpinned_npx_package(args):
+    if '-y' not in args and '--yes' not in args:
+        return None
+    skip_next = False
+    for idx, arg in enumerate(args):
+        if skip_next:
+            skip_next = False
+            continue
+        if arg in ('-p', '--package'):
+            if idx + 1 < len(args):
+                return args[idx + 1]
+            return None
+        if arg.startswith('--package='):
+            return arg.partition('=')[2]
+        if arg.startswith('-'):
+            continue
+        return arg
+    return None
+
+
+def is_pinned_npm_package(pkg):
+    if not pkg or pkg.startswith(('/', './', '../')):
+        return True
+    if pkg.startswith('@'):
+        if '/' not in pkg:
+            return False
+        _, _, rest = pkg.partition('/')
+        if '@' not in rest:
+            return False
+        version = rest.rsplit('@', 1)[1]
+    else:
+        if '@' not in pkg:
+            return False
+        version = pkg.rsplit('@', 1)[1]
+    return bool(version) and version.lower() not in ('latest', 'next', 'canary', '*')
+
+
+def is_project_scoped_grant(grant):
+    if grant in ('.', './'):
+        return True
+    if grant.startswith('./'):
+        rel = grant[2:]
+        return '..' not in Path(rel).parts
+    if grant == '${workspaceFolder}':
+        return True
+    if grant.startswith('${workspaceFolder}/'):
+        rel = grant[len('${workspaceFolder}/'):]
+        return '..' not in Path(rel).parts
+    return False
+
+
 def inspect_server(server, label):
+    emitted = False
     if not isinstance(server, dict):
-        emit('unknown', label + ': unsupported server entry')
-        return
-    command = server.get('command', '')
+        emit('unknown', label + ': unsupported server entry',
+             'Review MCP server definition; see https://iscooked.com/unknowns#configuration')
+        return True
+
+    for url_key in ('url', 'serverUrl', 'httpUrl'):
+        url_val = server.get(url_key)
+        if isinstance(url_val, str) and url_val.strip().lower().startswith('http://'):
+            parsed = urllib.parse.urlsplit(url_val.strip())
+            if not is_loopback_url_host(parsed.hostname or ''):
+                emit('cooked', label + ': remote MCP server uses unencrypted plain http:// URL',
+                     'Switch remote MCP endpoint URL to https://')
+                emitted = True
+                break
+
+    raw_command = server.get('command', '')
     args = server.get('args', [])
-    if not isinstance(command, str) or not isinstance(args, list) or not all(isinstance(a, str) for a in args):
-        emit('unknown', label + ': unsupported command or arguments')
-        return
-    # Exact known executable/package identities, not arbitrary path-looking args.
+    if isinstance(raw_command, list):
+        if not raw_command or not all(isinstance(x, str) for x in raw_command):
+            emit('unknown', label + ': unsupported command or arguments',
+                 'Check MCP server command array; see https://iscooked.com/unknowns#configuration')
+            return True
+        command = raw_command[0]
+        extra_args = args if isinstance(args, list) and all(isinstance(a, str) for a in args) else []
+        args = [*raw_command[1:], *extra_args]
+    elif isinstance(raw_command, dict):
+        cmd_path = raw_command.get('path', '')
+        cmd_args = raw_command.get('args', [])
+        if not isinstance(cmd_path, str) or not isinstance(cmd_args, list) or not all(isinstance(a, str) for a in cmd_args):
+            emit('unknown', label + ': unsupported command or arguments',
+                 'Check Zed context_servers command structure; see https://iscooked.com/unknowns#configuration')
+            return True
+        command = cmd_path
+        args = cmd_args
+    elif isinstance(raw_command, str) and isinstance(args, list) and all(isinstance(a, str) for a in args):
+        command = raw_command
+    else:
+        emit('unknown', label + ': unsupported command or arguments',
+             'Review MCP command and args types; see https://iscooked.com/unknowns#configuration')
+        return True
+
     executable = os.path.basename(command)
+    if executable == 'npx':
+        pkg = find_unpinned_npx_package(args)
+        if pkg and not is_pinned_npm_package(pkg):
+            emit('warming', label + ": uses unpinned 'npx -y' without an explicit @version",
+                 'Pin a specific version (for example @scope/package@1.2.3) instead of unpinned npx -y')
+            emitted = True
+
     filesystem = executable == 'mcp-server-filesystem'
     grants = args if filesystem else []
     if executable in ('npx', 'bunx'):
@@ -1349,60 +1774,82 @@ def inspect_server(server, label):
         broad = False
         complete = True
         if not grants:
-            emit('unknown', label + ': filesystem server has no explicit grants; review effective access')
+            emit('unknown', label + ': filesystem server has no explicit grants; review effective access',
+                 'Specify an explicit project directory grant; see https://iscooked.com/unknowns#configuration')
+            emitted = True
             complete = False
         for grant in dict.fromkeys(grants):
             if grant.startswith('-'):
                 continue
+            if is_project_scoped_grant(grant):
+                continue
             if '$' in grant or '{' in grant:
                 complete = False
-                emit('unknown', label + ': filesystem grant uses unresolved variables; review resolved access')
+                emit('unknown', label + ': filesystem grant uses unresolved variables; review resolved access',
+                     'Replace unresolved variables with an explicit directory or ${workspaceFolder}; see https://iscooked.com/unknowns#configuration')
+                emitted = True
                 continue
             expanded = Path(os.path.expanduser(grant))
             if not expanded.is_absolute():
                 complete = False
-                emit('unknown', label + ': relative filesystem grant depends on server working directory')
+                emit('unknown', label + ': relative filesystem grant depends on server working directory',
+                     'Use an explicit path or ./ within the workspace; see https://iscooked.com/unknowns#configuration')
+                emitted = True
                 continue
             try:
                 expanded = expanded.resolve()
             except (OSError, RuntimeError):
                 complete = False
-                emit('unknown', label + ': filesystem grant could not be resolved')
+                emit('unknown', label + ': filesystem grant could not be resolved',
+                     'Verify granted directory path exists; see https://iscooked.com/unknowns#configuration')
+                emitted = True
                 continue
             if expanded == Path('/') or expanded == home or expanded in home.parents:
                 scope = 'entire home directory' if expanded == home else 'filesystem root or ancestor of home'
-                emit('warming', label + ': filesystem server grants access to ' + scope + '; narrow grants to required project directories')
+                emit('warming', label + ': filesystem server grants access to ' + scope + '; narrow grants to required project directories',
+                     'Narrow filesystem server grant to a specific project subdirectory')
+                emitted = True
                 broad = True
             elif any(expanded == sensitive or sensitive in expanded.parents
                      for sensitive in (home / '.ssh', home / '.aws', home / '.gnupg', home / '.config', Path('/etc'))):
-                emit('warming', label + ': filesystem server grants a sensitive directory; narrow grants to required project directories')
+                emit('warming', label + ': filesystem server grants a sensitive directory; narrow grants to required project directories',
+                     'Remove sensitive directory (~/.ssh, ~/.aws, ~/.gnupg, ~/.config, /etc) from filesystem grants')
+                emitted = True
                 broad = True
         if not broad and complete:
             emit('safe', label + ': no broad filesystem grants identified in literal arguments')
-    # Known shell server identity; arbitrary shell wrappers are not inferred unsafe.
+            emitted = True
     if executable == 'mcp-server-shell' or (executable in ('npx', 'bunx') and 'mcp-server-shell' in args):
-        emit('warming', label + ': known shell server configured; review command restrictions and run with minimal privileges')
+        emit('warming', label + ': known shell server configured; review command restrictions and run with minimal privileges',
+             'Ensure mcp-server-shell uses a command allowlist and minimal privileges')
+        emitted = True
+    return emitted
+
 
 found = False
 seen = set()
-for path, label in paths:
-    if str(path) in seen:
+for path, label, schema_kind, project_local, strict_mcp_file in paths:
+    norm_key = os.path.abspath(str(path))
+    if norm_key in seen:
         continue
-    seen.add(str(path))
+    seen.add(norm_key)
     try:
         s = path.stat()
     except FileNotFoundError:
         if path.is_symlink():
             found = True
-            emit('unknown', label + ': broken config symlink')
+            emit('unknown', label + ': broken config symlink',
+                 f'Inspect symlink with ls -l "{path}"; see https://iscooked.com/unknowns#configuration')
         continue
     except OSError:
         found = True
-        emit('unknown', label + ': configuration is inaccessible')
+        emit('unknown', label + ': configuration is inaccessible',
+             f'Check permissions with ls -ld "{path}"; see https://iscooked.com/unknowns#configuration')
         continue
-    found = True
     if not stat.S_ISREG(s.st_mode) or s.st_size > LIMIT:
-        emit('unknown', label + ': unsupported file type or configuration exceeds 1 MiB limit')
+        found = True
+        emit('unknown', label + ': unsupported file type or configuration exceeds 1 MiB limit',
+             'Ensure MCP config is a regular file under 1 MiB; see https://iscooked.com/unknowns#configuration')
         continue
     try:
         # O_NONBLOCK prevents a raced FIFO from blocking the scanner.
@@ -1413,38 +1860,83 @@ for path, label in paths:
             raw = stream.read(LIMIT + 1)
         if len(raw) > LIMIT:
             raise ValueError()
-        data = json.loads(raw)
+        data = parse_toml(raw) if schema_kind == 'codex_toml' else parse_jsonc(raw)
         if not isinstance(data, dict):
             raise ValueError()
-    except (OSError, ValueError, RecursionError):
-        emit('unknown', label + ': unreadable, malformed, or oversized JSON configuration')
+    except (OSError, ValueError, UnicodeDecodeError, RecursionError):
+        found = True
+        emit('unknown', label + ': unreadable, malformed, or oversized configuration',
+             f'Validate syntax of "{path}"; see https://iscooked.com/unknowns#configuration')
         continue
-    emitted_before = EMITTED[0]
+
     groups = []
-    if 'mcpServers' in data:
-        groups.append(data['mcpServers'])
-    if label == 'Claude Code user' and isinstance(data.get('projects'), dict):
-        projects = list(data['projects'].values())
-        if len(projects) > 128:
-            emit('unknown', label + ': project limit exceeded; inspection incomplete')
-        for project in projects[:128]:
-            if isinstance(project, dict) and 'mcpServers' in project:
-                groups.append(project['mcpServers'])
-    if not groups and 'servers' in data:
-        emit('unknown', label + ': uses a "servers" format this scanner does not evaluate yet')
+    if schema_kind == 'mcpServers':
+        if 'mcpServers' in data:
+            groups.append(data['mcpServers'])
+    elif schema_kind == 'claude_user':
+        if 'mcpServers' in data:
+            groups.append(data['mcpServers'])
+        if isinstance(data.get('projects'), dict):
+            projects = list(data['projects'].values())
+            if len(projects) > 128:
+                found = True
+                emit('unknown', label + ': project limit exceeded; inspection incomplete',
+                     'Clean unused project entries in ~/.claude.json; see https://iscooked.com/unknowns#configuration')
+            for project in projects[:128]:
+                if isinstance(project, dict) and 'mcpServers' in project:
+                    groups.append(project['mcpServers'])
+    elif schema_kind == 'opencode_mcp':
+        if 'mcp' in data:
+            groups.append(data['mcp'])
+    elif schema_kind == 'zed_context_servers':
+        if 'context_servers' in data:
+            groups.append(data['context_servers'])
+    elif schema_kind == 'vscode_servers':
+        if 'servers' in data:
+            groups.append(data['servers'])
+        if 'mcpServers' in data:
+            groups.append(data['mcpServers'])
+    elif schema_kind == 'codex_toml':
+        if 'mcp_servers' in data:
+            groups.append(data['mcp_servers'])
+
+    if not groups:
+        if strict_mcp_file and 'servers' in data:
+            found = True
+            emit('unknown', label + ': uses a "servers" format this scanner does not evaluate yet',
+                 'Use standard mcpServers object or check VS Code .vscode/mcp.json; see https://iscooked.com/unknowns#configuration')
+        elif strict_mcp_file or schema_kind == 'claude_user':
+            found = True
+            if not permissions(path, label, False):
+                emit('safe', label + ': no MCP servers configured')
+        continue
+
+    found = True
+    file_emitted = False
     servers = []
     for group in groups:
         if isinstance(group, dict):
             servers.extend(group.values())
         else:
-            emit('unknown', label + ': unsupported mcpServers structure')
+            emit('unknown', label + ': unsupported MCP server structure',
+                 'Expected a JSON/TOML object mapping server names to configurations; see https://iscooked.com/unknowns#configuration')
+            file_emitted = True
+
     credentials = any(has_credentials(s) for s in servers if isinstance(s, dict))
-    permissions(path, label, credentials)
+    if project_local and credentials:
+        emit('warming', label + ': project-local MCP configuration contains hardcoded credential values',
+             'Move secrets out of repository MCP files into environment variables (e.g. ${API_KEY})')
+        file_emitted = True
+    if permissions(path, label, credentials):
+        file_emitted = True
     if len(servers) > 128:
-        emit('unknown', label + ': server limit exceeded; inspection incomplete')
+        emit('unknown', label + ': server limit exceeded; inspection incomplete',
+             'Reduce server count below 128; see https://iscooked.com/unknowns#configuration')
+        file_emitted = True
     for i, server in enumerate(servers[:128], 1):
-        inspect_server(server, label + ' server ' + str(i))
-    if EMITTED[0] == emitted_before:
+        if inspect_server(server, label + ' server ' + str(i)):
+            file_emitted = True
+    if not file_emitted:
         if servers:
             emit('safe', label + ': ' + str(len(servers)) + ' MCP server(s) reviewed; no risky settings found')
         else:
@@ -1453,67 +1945,186 @@ if not found:
     emit('skip', 'No supported MCP configuration found; unsupported clients and formats are not evaluated')
 MCP_PY
     ); then
-        result_unknown "MCP configuration parser failed; inspection incomplete"
+        result_unknown "MCP configuration parser failed; inspection incomplete" "Inspect MCP configuration JSON/TOML files manually; see https://iscooked.com/unknowns#configuration"
         return
     fi
-    while IFS=$'\t' read -r mcp_severity mcp_message; do
+    while IFS=$'\t' read -r mcp_severity mcp_message mcp_hint; do
         case "$mcp_severity" in
-            cooked) result_cooked "$mcp_message" ;;
-            warming) result_warming "$mcp_message" ;;
+            cooked) result_cooked "$mcp_message" "$mcp_hint" ;;
+            warming) result_warming "$mcp_message" "$mcp_hint" ;;
             safe) result_safe "$mcp_message" ;;
-            unknown) result_unknown "$mcp_message" ;;
+            unknown) result_unknown "$mcp_message" "$mcp_hint" ;;
             skip) result_skip "$mcp_message" ;;
         esac
     done <<< "$mcp_output"
 }
 
 check_agent_gateway() {
-    section "15" "Agent Gateway Configuration"
+    section "15" "Coding Agent Permissions & Gateways"
     if ! command -v python3 >/dev/null 2>&1; then
-        result_skip "OpenClaw configuration inspection requires optional python3"
+        result_skip "Coding agent and OpenClaw configuration inspection requires optional python3"
         return
     fi
-    local gateway_output gateway_severity gateway_message
+    local gateway_output gateway_severity gateway_message gateway_hint
     if ! gateway_output=$(python3 -I -B -S - 2>/dev/null <<'GATEWAY_PY'
 import fnmatch
+import glob
 import ipaddress
 import json
 import os
 import re
-import select
-import shutil
-import signal
+import shlex
 import stat
-import subprocess
 import sys
-import time
+from pathlib import Path
 
-# Intentionally strict JSON: JSON5, includes, environment interpolation and
-# runtime/CLI overrides require OpenClaw's own policy resolver and are not run.
+try:
+    import tomllib
+except ImportError:
+    tomllib = None
+
 LIMIT = 1048576
-# Oldest release whose config keys were reviewed. Newer releases are accepted:
-# the strict parser below fails closed (UNKNOWN) on unrecognized values.
-MIN_OPENCLAW_VERSION = (2026, 9, 3)
+COMMENT_RE = re.compile(r'"(?:\\.|[^"\\])*"|//[^\r\n]*|/\*[\s\S]*?\*/')
+COMMA_RE = re.compile(r'"(?:\\.|[^"\\])*"|(,)(\s*[}\]])')
+home = Path.home()
+cwd = Path.cwd()
+any_found = False
 
-def emit(level, message):
-    print(level + '\tOpenClaw: ' + message)
 
+def emit(level, message, hint=''):
+    print(level + '\t' + message + '\t' + hint)
+
+
+def strip_jsonc(text):
+    stripped = COMMENT_RE.sub(lambda m: m.group(0) if m.group(0).startswith('"') else ' ', text)
+    return COMMA_RE.sub(lambda m: m.group(2) if m.group(1) else m.group(0), stripped)
+
+
+def parse_jsonc(raw_bytes, *, object_pairs_hook=None, parse_constant=None):
+    cleaned = strip_jsonc(raw_bytes.decode('utf-8-sig'))
+    return json.loads(cleaned, object_pairs_hook=object_pairs_hook, parse_constant=parse_constant)
+
+
+def _strip_toml_comment(line):
+    in_dq = False
+    in_sq = False
+    escaped = False
+    for idx, ch in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+        if in_dq:
+            if ch == '\\':
+                escaped = True
+            elif ch == '"':
+                in_dq = False
+        elif in_sq:
+            if ch == "'":
+                in_sq = False
+        else:
+            if ch == '"':
+                in_dq = True
+            elif ch == "'":
+                in_sq = True
+            elif ch == '#':
+                return line[:idx]
+    return line
+
+
+def _parse_toml_scalar(val):
+    val = val.strip()
+    if val == 'true':
+        return True
+    if val == 'false':
+        return False
+    if val.startswith('"') and val.endswith('"') and len(val) >= 2:
+        return json.loads(val)
+    if val.startswith("'") and val.endswith("'") and len(val) >= 2:
+        return val[1:-1]
+    return val
+
+
+def parse_toml(raw_bytes):
+    text = raw_bytes.decode('utf-8-sig')
+    if tomllib is not None:
+        return tomllib.loads(text)
+    root = {}
+    cursor = root
+    for raw_line in text.splitlines():
+        line = _strip_toml_comment(raw_line).strip()
+        if not line:
+            continue
+        if line.startswith('[') and line.endswith(']'):
+            header = line[1:-1].strip()
+            parts = [p.strip().strip('"\'') for p in header.split('.')]
+            cursor = root
+            for part in parts:
+                if part not in cursor or not isinstance(cursor[part], dict):
+                    cursor[part] = {}
+                cursor = cursor[part]
+        elif '=' in line:
+            k, _, v = line.partition('=')
+            cursor[k.strip().strip('"\'')] = _parse_toml_scalar(v)
+    return root
+
+
+def read_regular_bytes(path, label, *, nofollow=False):
+    global any_found
+    try:
+        before = os.lstat(path) if nofollow else os.stat(path)
+    except FileNotFoundError:
+        if not nofollow and os.path.islink(path):
+            any_found = True
+            emit('unknown', f'{label}: broken configuration symlink',
+                 f'Inspect symlink with ls -l "{path}"; see https://iscooked.com/unknowns#configuration')
+        return None
+    except OSError:
+        any_found = True
+        emit('unknown', f'{label}: configuration inaccessible; inspection incomplete',
+             f'Check permissions with ls -ld "{path}"; see https://iscooked.com/unknowns#configuration')
+        return None
+    any_found = True
+    try:
+        if not stat.S_ISREG(before.st_mode) or not before.st_mode & 0o444 or before.st_size > LIMIT:
+            raise ValueError()
+        flags = os.O_RDONLY | os.O_NONBLOCK
+        if nofollow:
+            flags |= getattr(os, 'O_NOFOLLOW', 0)
+        fd = os.open(path, flags)
+        with os.fdopen(fd, 'rb') as stream:
+            opened = os.fstat(stream.fileno())
+            if not stat.S_ISREG(opened.st_mode) or (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
+                raise ValueError()
+            raw = stream.read(LIMIT + 1)
+            if len(raw) > LIMIT:
+                raise ValueError()
+        return raw
+    except (OSError, ValueError):
+        emit('unknown', f'{label}: unreadable, oversized, or unsupported file type',
+             f'Inspect "{path}" with ls -l; see https://iscooked.com/unknowns#configuration')
+        return None
+
+
+# ── 1. OpenClaw Gateway & Policy ─────────────────────────────────────────────
 def object_at(obj, key):
     value = obj.get(key, {})
     if not isinstance(value, dict):
         raise ValueError()
     return value
 
+
 def enum(obj, key, values):
     if key in obj and (not isinstance(obj[key], str) or obj[key] not in values):
         raise ValueError()
     return obj.get(key)
+
 
 def strings(obj, key):
     value = obj.get(key, [])
     if not isinstance(value, list) or any(not isinstance(x, str) for x in value):
         raise ValueError()
     return value
+
 
 def unique(pairs):
     obj = {}
@@ -1523,8 +2134,10 @@ def unique(pairs):
         obj[key] = value
     return obj
 
+
 def reject_constant(value):
     raise ValueError()
+
 
 def unresolved(value):
     if isinstance(value, dict):
@@ -1533,167 +2146,385 @@ def unresolved(value):
         return any(unresolved(v) for v in value)
     return isinstance(value, str) and '${' in value
 
-def supported_cli_version():
-    executable = shutil.which('openclaw')
-    if not executable:
-        return False
+
+def check_openclaw():
+    path = os.environ.get('OPENCLAW_CONFIG_PATH') or os.path.join(str(home), '.openclaw', 'openclaw.json')
+    raw = read_regular_bytes(path, 'OpenClaw', nofollow=True)
+    if raw is None:
+        return
+    oc_emitted = False
     try:
-        process = subprocess.Popen(
-            [executable, '--version'], stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
+        config = parse_jsonc(raw, object_pairs_hook=unique, parse_constant=reject_constant)
+        if not isinstance(config, dict) or unresolved(config):
+            raise ValueError()
+        gateway = object_at(config, 'gateway')
+        auth = object_at(gateway, 'auth')
+        bind = enum(gateway, 'bind', ('auto', 'loopback', 'lan', 'tailnet', 'custom'))
+        enum(gateway, 'mode', ('local', 'remote'))
+        auth_mode = enum(auth, 'mode', ('none', 'token', 'password', 'trusted-proxy'))
+        exposed = bind == 'lan'
+        if bind == 'custom':
+            host = gateway.get('customBindHost')
+            if not isinstance(host, str):
+                raise ValueError()
+            exposed = not ipaddress.IPv4Address(host).is_loopback
+        if bind in ('auto', 'tailnet') and auth_mode == 'none':
+            emit('unknown', 'OpenClaw: bind requires runtime resolution; exposure with disabled auth cannot be determined',
+                 'Bind gateway to loopback or enable token/password auth; see https://iscooked.com/unknowns#configuration')
+            oc_emitted = True
+        elif exposed and auth_mode == 'none' and gateway.get('mode') != 'remote':
+            emit('cooked', 'OpenClaw: configuration exposes gateway beyond localhost with authentication explicitly disabled; verify runtime and upstream controls',
+                 'Set gateway.bind to loopback and enable gateway.auth.mode token or password')
+            oc_emitted = True
+        elif auth_mode in ('token', 'password', 'trusted-proxy'):
+            emit('safe', 'OpenClaw: gateway auth mode is configured (runtime enforcement not verified)')
+            oc_emitted = True
+
+        agents = object_at(config, 'agents')
+        defaults = object_at(agents, 'defaults')
+        sandbox = object_at(defaults, 'sandbox')
+        sandbox_mode = enum(sandbox, 'mode', ('off', 'non-main', 'all'))
+        tools = object_at(config, 'tools')
+        execute = object_at(tools, 'exec')
+        exec_mode = enum(execute, 'mode', ('deny', 'allowlist', 'ask', 'auto', 'full'))
+        security = enum(execute, 'security', ('deny', 'allowlist', 'full'))
+        ask = enum(execute, 'ask', ('off', 'on-miss', 'always'))
+        host = enum(execute, 'host', ('auto', 'sandbox', 'gateway', 'node'))
+        if exec_mode is not None and ('security' in execute or 'ask' in execute):
+            raise ValueError()
+        profile = enum(tools, 'profile', ('minimal', 'messaging', 'coding', 'full'))
+        allow, deny, additional = (strings(tools, key) for key in ('allow', 'deny', 'alsoAllow'))
+        if 'allow' in tools and 'alsoAllow' in tools:
+            raise ValueError()
+        channels = object_at(config, 'channels')
+        if any(key in agents for key in ('entries', 'list')) or 'bindings' in config or any(key in tools for key in ('byProvider', 'toolsBySender')):
+            raise ValueError()
+        open_ingress = False
+        for name, channel in channels.items():
+            if not isinstance(channel, dict):
+                raise ValueError()
+            if 'enabled' in channel and not isinstance(channel['enabled'], bool):
+                raise ValueError()
+            if channel.get('enabled') is False:
+                continue
+            if name not in ('telegram', 'whatsapp') or any(key in channel for key in ('accounts', 'tools', 'toolsBySender', 'groups')):
+                raise ValueError()
+            policy = enum(channel, 'dmPolicy', ('open', 'pairing', 'allowlist', 'disabled'))
+            incoming = strings(channel, 'allowFrom')
+            open_ingress |= policy == 'open' and '*' in incoming
+
+        def matches(patterns):
+            return any(p.lower() == 'group:runtime' or fnmatch.fnmatchcase('exec', p.lower()) or p.lower() == 'bash' for p in patterns)
+
+        capability = profile in ('coding', 'full') or matches(additional) or (profile is None and matches(allow))
+        if 'allow' in tools:
+            capability = capability and matches(allow)
+        capability = capability and not matches(deny)
+        permissive_exec = exec_mode == 'full' or (exec_mode is None and security == 'full' and ask == 'off')
+        host_exec = host == 'gateway' or (host in (None, 'auto') and sandbox_mode == 'off')
+        if open_ingress and capability and permissive_exec and host_exec and sandbox_mode == 'off':
+            emit('cooked', 'OpenClaw: open DM ingress combines with configured unrestricted host exec and disabled sandbox; host approvals and runtime enforcement remain unverified',
+                 'Enable sandbox mode, restrict DM allowFrom/dmPolicy, and require exec approvals')
+            oc_emitted = True
+        elif permissive_exec or sandbox_mode == 'off':
+            emit('warming', 'OpenClaw: explicit permissive exec or disabled sandbox setting; review request access and host approval policy',
+                 'Enable sandbox.mode and restrict tools.exec approvals')
+            oc_emitted = True
+        elif not oc_emitted:
+            emit('safe', 'OpenClaw: no unsafe gateway exposure or tool-policy combination found')
+    except (OSError, ValueError, TypeError, RecursionError, OverflowError):
+        emit('unknown', 'OpenClaw: configuration unreadable, oversized, malformed or unsupported (JSON/JSONC and known policy fields only); inspection incomplete',
+             'Review ~/.openclaw/openclaw.json manually; see https://iscooked.com/unknowns#configuration')
+
+
+# ── 2. Claude Code Settings & Hooks ──────────────────────────────────────────
+def path_or_parent_world_writable(target):
+    try:
+        resolved = Path(target).resolve(strict=True)
+        if resolved.stat().st_mode & stat.S_IWOTH:
+            return True
+        return any(p.stat().st_mode & stat.S_IWOTH and not p.stat().st_mode & stat.S_ISVTX
+                   for p in resolved.parents)
     except OSError:
         return False
-    deadline = time.monotonic() + 1.5
-    output = bytearray()
-    complete = False
-    try:
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                return False
-            ready, _, _ = select.select([process.stdout], [], [], remaining)
-            if not ready:
-                return False
-            chunk = os.read(process.stdout.fileno(), 257 - len(output))
-            if not chunk:
-                break
-            output.extend(chunk)
-            if len(output) > 256:
-                return False
-        if process.wait(timeout=max(0, deadline - time.monotonic())) != 0:
-            return False
-        complete = True
-        match = re.fullmatch(
-            r'OpenClaw ([0-9]{4}\.[0-9]{1,2}\.[0-9]{1,2})(?: \([0-9a-fA-F]{6,40}\))?',
-            output.decode('ascii').strip(),
-        )
-        return bool(match and tuple(int(x) for x in match.group(1).split('.')) >= MIN_OPENCLAW_VERSION)
-    except (OSError, UnicodeError, subprocess.TimeoutExpired):
-        return False
-    finally:
-        if not complete:
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-        process.stdout.close()
-        try:
-            process.wait(timeout=0.1)
-        except subprocess.TimeoutExpired:
-            pass
 
-path = os.environ.get('OPENCLAW_CONFIG_PATH') or os.path.join(os.path.expanduser('~'), '.openclaw', 'openclaw.json')
-try:
-    before = os.lstat(path)
-except FileNotFoundError:
-    emit('skip', 'no configuration found')
-    sys.exit(0)
-except OSError:
-    emit('unknown', 'configuration inaccessible; inspection incomplete')
-    sys.exit(0)
-try:
-    if not stat.S_ISREG(before.st_mode) or not before.st_mode & 0o444 or before.st_size > LIMIT:
-        raise ValueError()
-    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, 'O_NOFOLLOW', 0))
-    with os.fdopen(fd, 'rb') as stream:
-        opened = os.fstat(stream.fileno())
-        if not stat.S_ISREG(opened.st_mode) or (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
-            raise ValueError()
-        raw = stream.read(LIMIT + 1)
-        if len(raw) > LIMIT:
-            raise ValueError()
-    config = json.loads(raw, object_pairs_hook=unique, parse_constant=reject_constant)
-    if not isinstance(config, dict) or unresolved(config):
-        raise ValueError()
-    if not supported_cli_version():
-        emit('unknown', 'OpenClaw CLI version unavailable or older than reviewed baseline 2026.9.3; policy inspection incomplete')
-        sys.exit(0)
-    gateway = object_at(config, 'gateway')
-    auth = object_at(gateway, 'auth')
-    bind = enum(gateway, 'bind', ('auto', 'loopback', 'lan', 'tailnet', 'custom'))
-    enum(gateway, 'mode', ('local', 'remote'))
-    auth_mode = enum(auth, 'mode', ('none', 'token', 'password', 'trusted-proxy'))
-    exposed = bind == 'lan'
-    if bind == 'custom':
-        host = gateway.get('customBindHost')
-        if not isinstance(host, str):
-            raise ValueError()
-        exposed = not ipaddress.IPv4Address(host).is_loopback
-    if bind in ('auto', 'tailnet') and auth_mode == 'none':
-        emit('unknown', 'bind requires runtime resolution; exposure with disabled auth cannot be determined')
-    elif exposed and auth_mode == 'none' and gateway.get('mode') != 'remote':
-        emit('cooked', 'configuration exposes gateway beyond localhost with authentication explicitly disabled; verify runtime and upstream controls')
 
-    agents = object_at(config, 'agents')
-    defaults = object_at(agents, 'defaults')
-    sandbox = object_at(defaults, 'sandbox')
-    sandbox_mode = enum(sandbox, 'mode', ('off', 'non-main', 'all'))
-    tools = object_at(config, 'tools')
-    execute = object_at(tools, 'exec')
-    exec_mode = enum(execute, 'mode', ('deny', 'allowlist', 'ask', 'auto', 'full'))
-    security = enum(execute, 'security', ('deny', 'allowlist', 'full'))
-    ask = enum(execute, 'ask', ('off', 'on-miss', 'always'))
-    host = enum(execute, 'host', ('auto', 'sandbox', 'gateway', 'node'))
-    if exec_mode is not None and ('security' in execute or 'ask' in execute):
-        raise ValueError()
-    profile = enum(tools, 'profile', ('minimal', 'messaging', 'coding', 'full'))
-    allow, deny, additional = (strings(tools, key) for key in ('allow', 'deny', 'alsoAllow'))
-    if 'allow' in tools and 'alsoAllow' in tools:
-        raise ValueError()
-    channels = object_at(config, 'channels')
-    # Deliberately do not guess routing or compose per-agent/provider/sender
-    # overrides. These can turn global permissive settings into restricted tools.
-    if any(key in agents for key in ('entries', 'list')) or 'bindings' in config or any(key in tools for key in ('byProvider', 'toolsBySender')):
-        raise ValueError()
-    open_ingress = False
-    for name, channel in channels.items():
-        if not isinstance(channel, dict):
-            raise ValueError()
-        if 'enabled' in channel and not isinstance(channel['enabled'], bool):
-            raise ValueError()
-        if channel.get('enabled') is False:
+def extract_hook_commands(hooks_obj):
+    commands = []
+    if not isinstance(hooks_obj, dict):
+        return commands
+    for event_entries in hooks_obj.values():
+        if not isinstance(event_entries, list):
             continue
-        # The first release covers top-level Telegram and WhatsApp DM policy.
-        # Other adapters/accounts and group/sender policy have separate semantics.
-        if name not in ('telegram', 'whatsapp') or any(key in channel for key in ('accounts', 'tools', 'toolsBySender', 'groups')):
+        for entry in event_entries:
+            if not isinstance(entry, dict):
+                continue
+            if isinstance(entry.get('command'), str):
+                commands.append(entry['command'])
+            inner = entry.get('hooks')
+            if isinstance(inner, list):
+                for item in inner:
+                    if isinstance(item, dict) and isinstance(item.get('command'), str):
+                        commands.append(item['command'])
+    return commands
+
+
+def check_claude_code():
+    candidates = [
+        (home / '.claude/settings.json', 'Claude Code (user)', False),
+        (home / '.claude/settings.local.json', 'Claude Code (user local)', False),
+        (cwd / '.claude/settings.json', 'Claude Code (project)', True),
+        (cwd / '.claude/settings.local.json', 'Claude Code (project local)', True),
+    ]
+    seen = set()
+    for path, label, is_project in candidates:
+        key = os.path.abspath(str(path))
+        if key in seen:
+            continue
+        seen.add(key)
+        raw = read_regular_bytes(path, label)
+        if raw is None:
+            continue
+        try:
+            data = parse_jsonc(raw)
+            if not isinstance(data, dict):
+                raise ValueError()
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            emit('unknown', f'{label}: malformed settings JSON',
+                 f'Validate syntax of "{path}"; see https://iscooked.com/unknowns#configuration')
+            continue
+
+        emitted = False
+        perms = data.get('permissions', {})
+        if isinstance(perms, dict):
+            if perms.get('defaultMode') == 'bypassPermissions':
+                emit('cooked', f'{label}: permissions.defaultMode is set to bypassPermissions',
+                     f'Remove "defaultMode": "bypassPermissions" from "{path}"')
+                emitted = True
+            allow = perms.get('allow', [])
+            if isinstance(allow, list):
+                crit_rules = []
+                warn_rules = []
+                for rule in allow:
+                    if not isinstance(rule, str):
+                        continue
+                    r = rule.strip()
+                    if r in ('Bash', 'Bash(*)', 'Bash(:*)', 'Bash(* *)', 'Bash(*:*)') or re.fullmatch(r'Bash\(sudo(?:\s+|:)\*\)', r):
+                        crit_rules.append(r)
+                    elif re.fullmatch(r'Bash\((?:rm|curl|wget|sh|bash)(?:\s+|:)[^)]*\*\)', r):
+                        warn_rules.append(r)
+                if crit_rules:
+                    emit('cooked', f'{label}: unrestricted shell allowlist ({", ".join(crit_rules)})',
+                         'Remove wildcard Bash(*) / Bash / Bash(sudo *) entries from permissions.allow')
+                    emitted = True
+                if warn_rules:
+                    emit('warming', f'{label}: broad dangerous shell allowlist ({", ".join(warn_rules)})',
+                         'Narrow wildcard Bash allowlist rules to specific safe commands')
+                    emitted = True
+
+        hooks = data.get('hooks')
+        hook_cmds = extract_hook_commands(hooks)
+        if hook_cmds:
+            writable_script = False
+            for cmd in hook_cmds:
+                try:
+                    exe = shlex.split(cmd)[0]
+                except ValueError:
+                    exe = cmd.split()[0] if cmd.split() else ''
+                if not exe:
+                    continue
+                candidate = Path(os.path.expanduser(exe))
+                if not candidate.is_absolute():
+                    candidate = (cwd if is_project else home) / candidate
+                if path_or_parent_world_writable(candidate):
+                    writable_script = True
+                    break
+            if writable_script:
+                emit('cooked', f'{label}: configured shell hook script is world-writable or in a world-writable directory',
+                     'Fix hook script permissions (chmod 750) and restrict directory write access')
+                emitted = True
+            elif is_project:
+                emit('warming', f'{label}: project-level shell hooks configured; review hook commands before trusting repository',
+                     f'Inspect hooks in "{path}" before running Claude Code in this project')
+                emitted = True
+
+        if not emitted:
+            emit('safe', f'{label}: permissions configuration passed checks')
+
+
+# ── 3. OpenCode Permissions ──────────────────────────────────────────────────
+def _is_opencode_allow(val):
+    return val == 'allow' or (isinstance(val, dict) and val.get('*') == 'allow')
+
+
+def check_opencode():
+    candidates = [
+        (home / '.config/opencode/opencode.json', 'OpenCode (user)'),
+        (cwd / 'opencode.json', 'OpenCode (project)'),
+    ]
+    seen = set()
+    for path, label in candidates:
+        key = os.path.abspath(str(path))
+        if key in seen:
+            continue
+        seen.add(key)
+        raw = read_regular_bytes(path, label)
+        if raw is None:
+            continue
+        try:
+            data = parse_jsonc(raw)
+            if not isinstance(data, dict):
+                raise ValueError()
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            emit('unknown', f'{label}: malformed configuration JSON',
+                 f'Validate syntax of "{path}"; see https://iscooked.com/unknowns#configuration')
+            continue
+
+        perm = data.get('permission')
+        emitted = False
+        if perm == 'allow' or (isinstance(perm, dict) and perm.get('*') == 'allow'):
+            emit('cooked', f'{label}: wildcard permission "*" is set to "allow"',
+                 'Change permission "*" to "ask" or restrict individual tools')
+            emitted = True
+        elif isinstance(perm, dict):
+            bash_allow = _is_opencode_allow(perm.get('bash'))
+            ext_allow = _is_opencode_allow(perm.get('external_directory'))
+            if bash_allow and ext_allow:
+                emit('cooked', f'{label}: both bash and external_directory permissions are set to allow',
+                     'Set permission.bash and permission.external_directory to "ask"')
+                emitted = True
+            elif bash_allow:
+                emit('warming', f'{label}: bash permission is set to allow without prompt',
+                     'Set permission.bash to "ask"')
+                emitted = True
+            elif ext_allow:
+                emit('warming', f'{label}: external_directory permission is set to allow',
+                     'Set permission.external_directory to "ask"')
+                emitted = True
+
+        if not emitted:
+            emit('safe', f'{label}: permission settings passed checks')
+
+
+# ── 4. Codex CLI ─────────────────────────────────────────────────────────────
+def check_codex():
+    path = home / '.codex/config.toml'
+    raw = read_regular_bytes(path, 'Codex CLI')
+    if raw is None:
+        return
+    try:
+        data = parse_toml(raw)
+        if not isinstance(data, dict):
             raise ValueError()
-        policy = enum(channel, 'dmPolicy', ('open', 'pairing', 'allowlist', 'disabled'))
-        incoming = strings(channel, 'allowFrom')
-        open_ingress |= policy == 'open' and '*' in incoming
-
-    def matches(patterns):
-        return any(p.lower() == 'group:runtime' or fnmatch.fnmatchcase('exec', p.lower()) or p.lower() == 'bash' for p in patterns)
-
-    # Require explicit positive capability; unset defaults do not prove access.
-    # alsoAllow expands the base profile; allow instead narrows that profile.
-    # Explicit additive grants therefore work even with minimal/messaging.
-    capability = profile in ('coding', 'full') or matches(additional) or (profile is None and matches(allow))
-    if 'allow' in tools:
-        capability = capability and matches(allow)
-    capability = capability and not matches(deny)
-    permissive_exec = exec_mode == 'full' or (exec_mode is None and security == 'full' and ask == 'off')
-    host_exec = host == 'gateway' or (host in (None, 'auto') and sandbox_mode == 'off')
-    if open_ingress and capability and permissive_exec and host_exec and sandbox_mode == 'off':
-        emit('cooked', 'open DM ingress combines with configured unrestricted host exec and disabled sandbox; host approvals and runtime enforcement remain unverified')
-    elif permissive_exec or sandbox_mode == 'off':
-        emit('warming', 'explicit permissive exec or disabled sandbox setting; review request access and host approval policy')
+    except (ValueError, UnicodeDecodeError):
+        emit('unknown', 'Codex CLI: malformed config.toml',
+             f'Validate TOML syntax in "{path}"; see https://iscooked.com/unknowns#configuration')
+        return
+    approval = data.get('approval_policy')
+    sandbox = data.get('sandbox_mode')
+    if approval == 'never' and sandbox == 'danger-full-access':
+        emit('cooked', 'Codex CLI: approval_policy="never" combined with sandbox_mode="danger-full-access"',
+             'Set approval_policy = "on-request" and sandbox_mode = "workspace-write" in ~/.codex/config.toml')
+    elif approval == 'never':
+        emit('warming', 'Codex CLI: approval_policy is set to "never"',
+             'Change approval_policy to "on-request" in ~/.codex/config.toml')
+    elif sandbox == 'danger-full-access':
+        emit('warming', 'Codex CLI: sandbox_mode is set to "danger-full-access"',
+             'Change sandbox_mode to "workspace-write" in ~/.codex/config.toml')
     else:
-        emit('skip', 'no supported explicit dangerous tool-policy combination found')
-    emit('skip', 'static JSON configuration only; credentials, runtime auth enforcement, CLI overrides and host approvals are not verified')
-except (OSError, ValueError, TypeError, RecursionError, OverflowError):
-    emit('unknown', 'configuration unreadable, oversized, malformed or unsupported (strict JSON and known policy fields only); inspection incomplete')
+        emit('safe', 'Codex CLI: approval and sandbox policy passed checks')
+
+
+# ── 5. Cursor Auto-Run / YOLO Mode ───────────────────────────────────────────
+def check_cursor():
+    candidates = [
+        (home / '.config/Cursor/User/settings.json', 'Cursor (Linux)'),
+        (home / 'Library/Application Support/Cursor/User/settings.json', 'Cursor (macOS)'),
+    ]
+    for path, label in candidates:
+        raw = read_regular_bytes(path, label)
+        if raw is None:
+            continue
+        try:
+            data = parse_jsonc(raw)
+            if not isinstance(data, dict):
+                raise ValueError()
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            emit('unknown', f'{label}: malformed settings.json',
+                 f'Validate syntax of "{path}"; see https://iscooked.com/unknowns#configuration')
+            continue
+        if (data.get('cursor.composer.shouldAutoRun') is True
+                or data.get('cursor.composer.yoloMode') is True
+                or data.get('yoloMode') is True):
+            emit('warming', f'{label}: composer auto-run / YOLO mode is enabled',
+                 'Disable cursor.composer.shouldAutoRun and yoloMode in Cursor settings')
+        else:
+            emit('safe', f'{label}: composer auto-run / YOLO mode is disabled')
+
+
+# ── 6. Prompt-Injection Invisible Unicode Scan ───────────────────────────────
+def count_invisible_unicode(text):
+    count = 0
+    for idx, ch in enumerate(text):
+        cp = ord(ch)
+        if (0x200B <= cp <= 0x200F
+                or 0x202A <= cp <= 0x202E
+                or 0x2060 <= cp <= 0x2069
+                or (cp == 0xFEFF and idx > 0)
+                or 0xE0000 <= cp <= 0xE007F):
+            count += 1
+    return count
+
+
+def check_instruction_unicode():
+    rel_paths = [
+        'CLAUDE.md',
+        'AGENTS.md',
+        '.cursorrules',
+        '.windsurfrules',
+        '.github/copilot-instructions.md',
+    ]
+    mdc_files = sorted(glob.glob('.cursor/rules/*.mdc'))
+    rel_paths.extend(mdc_files)
+    scanned = 0
+    found_dirty = False
+    for rel in rel_paths:
+        target = cwd / rel
+        raw = read_regular_bytes(target, f'Instruction file {rel}')
+        if raw is None:
+            continue
+        scanned += 1
+        text = raw.decode('utf-8', errors='replace')
+        hidden = count_invisible_unicode(text)
+        if hidden > 0:
+            found_dirty = True
+            emit('cooked',
+                 f'Instruction file {rel} contains {hidden} invisible/bidi Unicode character(s) (possible prompt injection)',
+                 f'Inspect hidden codepoints in {rel} before trusting this repository')
+    if scanned > 0 and not found_dirty:
+        emit('safe', f'Checked {scanned} instruction file(s) in current directory; no hidden Unicode prompt-injection characters found')
+
+
+check_openclaw()
+check_claude_code()
+check_opencode()
+check_codex()
+check_cursor()
+check_instruction_unicode()
+
+if not any_found:
+    emit('skip', 'No OpenClaw, coding-agent settings, or instruction files found')
 GATEWAY_PY
     ); then
-        result_unknown "OpenClaw configuration parser failed; inspection incomplete"
+        result_unknown "Coding agent and OpenClaw configuration parser failed; inspection incomplete" "Inspect agent configuration files manually; see https://iscooked.com/unknowns#configuration"
         return
     fi
-    while IFS=$'\t' read -r gateway_severity gateway_message; do
+    while IFS=$'\t' read -r gateway_severity gateway_message gateway_hint; do
         case "$gateway_severity" in
-            cooked) result_cooked "$gateway_message" ;;
-            warming) result_warming "$gateway_message" ;;
-            unknown) result_unknown "$gateway_message" ;;
+            cooked) result_cooked "$gateway_message" "$gateway_hint" ;;
+            warming) result_warming "$gateway_message" "$gateway_hint" ;;
+            safe) result_safe "$gateway_message" ;;
+            unknown) result_unknown "$gateway_message" "$gateway_hint" ;;
             skip) result_skip "$gateway_message" ;;
         esac
     done <<< "$gateway_output"
@@ -1763,8 +2594,33 @@ check_firewall() {
         if ! command_exists /usr/libexec/ApplicationFirewall/socketfilterfw && ! command_exists pfctl; then
             failed+=("no supported firewall inspection tool is available")
         fi
-    elif ! command_exists ufw && ! command_exists firewall-cmd && ! command_exists iptables && ! command_exists nft; then
-        failed+=("no supported firewall inspection tool is available")
+    else
+        # Check unprivileged Linux firewall state first before privileged commands.
+        if command_exists systemctl; then
+            if systemctl is-active --quiet ufw 2>/dev/null; then
+                result_safe "UFW firewall service is active"
+                has_firewall=true
+            elif systemctl is-active --quiet firewalld 2>/dev/null; then
+                result_safe "firewalld service is active"
+                has_firewall=true
+            elif systemctl is-active --quiet nftables 2>/dev/null; then
+                result_safe "nftables service is active"
+                has_firewall=true
+            elif systemctl is-active --quiet iptables 2>/dev/null; then
+                result_safe "iptables service is active"
+                has_firewall=true
+            fi
+        fi
+        if [[ "$has_firewall" == "false" && -r /etc/ufw/ufw.conf ]] \
+            && grep -Eq '^[[:space:]]*ENABLED[[:space:]]*=[[:space:]]*yes([[:space:]]|$|#)' /etc/ufw/ufw.conf 2>/dev/null; then
+            result_safe "UFW firewall is enabled (/etc/ufw/ufw.conf)"
+            has_firewall=true
+        fi
+        [[ "$has_firewall" == "true" ]] && return
+
+        if ! command_exists ufw && ! command_exists firewall-cmd && ! command_exists iptables && ! command_exists nft; then
+            failed+=("no supported firewall inspection tool is available")
+        fi
     fi
 
     if [[ "$OS_TYPE" == "macos" ]]; then
@@ -1880,16 +2736,18 @@ check_firewall() {
 
     if [[ "${#failed[@]}" -gt 0 ]]; then
         if [[ "$exposure_rc" -eq 1 ]]; then
-            result_skip "Firewall state could not be fully read (${details}); no AI service listens beyond localhost, so this does not affect your score. Re-run with sudo to check."
+            result_skip "Firewall state could not be fully read (${details}); no AI service listens beyond localhost, so this does not affect your score. Re-run with sudo to check." "Check manually with sudo ufw status or sudo nft list ruleset"
         else
-            result_unknown "Firewall state UNKNOWN (${details}). Re-run with sudo to check."
+            result_unknown "Firewall state UNKNOWN (${details}). Re-run with sudo to check." "Run sudo ufw status, sudo nft list ruleset, or see https://iscooked.com/unknowns#firewall"
         fi
     elif [[ "$exposure_rc" -eq 0 ]]; then
-        result_cooked "No active firewall detected! ${exposure^} with nothing filtering it (${details})"
+        local exposure_cap
+        exposure_cap=$(printf '%s%s' "$(printf '%s' "${exposure:0:1}" | tr '[:lower:]' '[:upper:]')" "${exposure:1}")
+        result_cooked "No active firewall detected! ${exposure_cap} with nothing filtering it (${details})" "Enable ufw (sudo ufw enable), firewalld, nftables, or macOS Application Firewall"
     elif [[ "$exposure_rc" -eq 1 ]]; then
-        result_warming "No active firewall detected (${details}). No AI service listens beyond localhost, so this is defense in depth rather than an open door."
+        result_warming "No active firewall detected (${details}). No AI service listens beyond localhost, so this is defense in depth rather than an open door." "Enable ufw (sudo ufw enable), firewalld, nftables, or macOS Application Firewall"
     else
-        result_warming "No active firewall detected (${details}). Listening services could not be checked."
+        result_warming "No active firewall detected (${details}). Listening services could not be checked." "Enable ufw (sudo ufw enable), firewalld, nftables, or macOS Application Firewall"
     fi
 }
 
@@ -1939,24 +2797,34 @@ check_ssl_tls() {
 
             if [[ -n "$probe_host" ]]; then
                 if ! is_numeric_ip_host "$probe_host"; then
-                    result_unknown "Port ${port} has an unsupported listener address; plain HTTP probe skipped"
+                    result_unknown "Port ${port} has an unsupported listener address; plain HTTP probe skipped" "Check listener bind address with ss -tlnp; see https://iscooked.com/unknowns#network"
                     probe_incomplete=true
                     continue
                 fi
                 if command_exists curl; then
-                    local http_code
+                    local http_code https_code
                     local probe_url_host
                     probe_url_host=$(format_http_host "$probe_host")
                     http_code=$(curl -q -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 --noproxy '*' "http://${probe_url_host}:${port}/" 2>/dev/null) || http_code="000"
                     if [[ "$http_code" =~ ^[0-9]{3}$ && "$http_code" != "000" ]]; then
-                        result_cooked "Port ${port} is exposed on ${exposure_desc} over plain HTTP"
+                        local tls_hint="Terminate TLS with a reverse proxy (Caddy/nginx) or bind port ${port} to 127.0.0.1"
+                        if [[ "$FULL_SCAN" == "true" ]] && is_exposed_critical_port "$port"; then
+                            record_result critical "Port ${port} is exposed on ${exposure_desc} over plain HTTP (correlated with Check 01; +0 pts)" "$tls_hint" 0
+                        else
+                            result_cooked "Port ${port} is exposed on ${exposure_desc} over plain HTTP" "$tls_hint"
+                        fi
                         found_http=true
                     else
-                        result_unknown "Port ${port} plain HTTP probe was inconclusive (curl status ${http_code:-unknown})"
-                        probe_incomplete=true
+                        https_code=$(curl -q -k -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 --noproxy '*' "https://${probe_url_host}:${port}/" 2>/dev/null) || https_code="000"
+                        if [[ "$https_code" =~ ^[0-9]{3}$ && "$https_code" != "000" ]]; then
+                            result_safe "Port ${port} serves HTTPS/TLS on ${exposure_desc}"
+                        else
+                            result_unknown "Port ${port} plain HTTP/HTTPS probe was inconclusive (http=${http_code:-unknown}, https=${https_code:-unknown})" "Probe manually with curl -vk https://${probe_url_host}:${port}/; see https://iscooked.com/unknowns#network"
+                            probe_incomplete=true
+                        fi
                     fi
                 else
-                    result_warming "Port ${port} is exposed on ${exposure_desc} (cannot verify TLS without curl)"
+                    result_warming "Port ${port} is exposed on ${exposure_desc} (cannot verify TLS without curl)" "Install curl or verify TLS configuration on port ${port}"
                     found_http=true
                 fi
             fi
@@ -1975,7 +2843,7 @@ check_ssl_tls() {
 check_processes() {
     section "09" "AI Process Enumeration"
 
-    local ai_process_patterns="ollama|llama[.]cpp|llama-server|text-generation|vllm|lmstudio|comfyui|stable-diffusion|koboldcpp|localai|whisper|faster-whisper|tabbyapi|sglang|litellm"
+    local ai_process_patterns="ollama|llama[.]cpp|llama-server|text-generation|vllm|lmstudio|comfyui|stable-diffusion|koboldcpp|localai|whisper|faster-whisper|tabbyapi|sglang|litellm|openclaw|opencode|open-webui|mcp-server"
 
     if ! command_exists ps; then
         result_skip "Process inspection requires ps"
@@ -1984,7 +2852,7 @@ check_processes() {
 
     local ps_snapshot
     if ! ps_snapshot=$(ps aux 2>/dev/null); then
-        result_unknown "AI process inspection failed — process state UNKNOWN"
+        result_unknown "AI process inspection failed — process state UNKNOWN" "Run ps -eo pid,user,comm; see https://iscooked.com/unknowns#network"
         return
     fi
 
@@ -1992,7 +2860,7 @@ check_processes() {
     local my_pid=$$
     if ! ai_procs=$(printf '%s\n' "$ps_snapshot" | awk -v pid="$my_pid" -v re="$ai_process_patterns" \
         '$2 != pid && $0 !~ /^[[:space:]]*USER[[:space:]]/ && tolower($0) ~ re {print}'); then
-        result_unknown "AI process filtering failed — process state UNKNOWN"
+        result_unknown "AI process filtering failed — process state UNKNOWN" "Run ps -eo pid,user,comm; see https://iscooked.com/unknowns#network"
         return
     fi
 
@@ -2010,7 +2878,7 @@ check_processes() {
         proc_cmd="${proc_cmd:-unknown executable}"
 
         if [[ "$proc_user" == "root" ]]; then
-            result_cooked "Candidate AI process '${proc_cmd}' (pid ${proc_pid}) running as root"
+            result_cooked "Candidate AI process '${proc_cmd}' (pid ${proc_pid}) running as root" "Run '${proc_cmd}' under a dedicated non-root user account"
         else
             result_safe "Candidate AI process '${proc_cmd}' (pid ${proc_pid}) running as '${proc_user}'"
         fi
@@ -2019,6 +2887,13 @@ check_processes() {
 
 check_sensitive_files() {
     section "10" "Sensitive File Exposure"
+
+    # Check if .env in current directory is tracked by git
+    if command_exists git && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        if git ls-files --error-unmatch .env >/dev/null 2>&1; then
+            result_cooked ".env in current directory is tracked by git" "Untrack it with: git rm --cached .env && echo .env >> .gitignore"
+        fi
+    fi
 
     # Check .env files in common locations
     local search_dirs_list="$HOME
@@ -2035,8 +2910,13 @@ $HOME/dev
     while IFS= read -r dir; do
         if [[ -d "$dir" ]]; then
             local env_files="" env_file_count=0
-            if ! env_files=$(find "$dir" -maxdepth 3 -type f \( -name ".env" -o -name ".env.local" -o -name "*.env" \) -print 2>/dev/null | awk 'NR <= 21 { print }'); then
-                result_unknown "Sensitive file search incomplete in ${dir}"
+            if [[ "$dir" == "/opt" || "$dir" == "/srv" ]]; then
+                [[ -r "$dir" && -x "$dir" ]] || continue
+                if ! env_files=$(find "$dir" -maxdepth 3 \( -type d ! -readable -prune \) -o -type f \( -name ".env" -o -name ".env.local" -o -name "*.env" \) -print 2>/dev/null | awk 'NR <= 21 { print }'); then
+                    continue
+                fi
+            elif ! env_files=$(find "$dir" -maxdepth 3 -type f \( -name ".env" -o -name ".env.local" -o -name "*.env" \) -print 2>/dev/null | awk 'NR <= 21 { print }'); then
+                result_unknown "Sensitive file search incomplete in ${dir}" "Inspect permissions under ${dir}; see https://iscooked.com/unknowns#files"
                 env_inspection_incomplete=true
                 continue
             fi
@@ -2049,12 +2929,14 @@ $HOME/dev
                     break
                 fi
                 local already_seen=false seen_env_file
-                for seen_env_file in "${seen_env_files[@]}"; do
-                    if [[ "$seen_env_file" == "$env_file" ]]; then
-                        already_seen=true
-                        break
-                    fi
-                done
+                if [[ "${#seen_env_files[@]}" -gt 0 ]]; then
+                    for seen_env_file in "${seen_env_files[@]}"; do
+                        if [[ "$seen_env_file" == "$env_file" ]]; then
+                            already_seen=true
+                            break
+                        fi
+                    done
+                fi
                 if [[ "$already_seen" == "true" ]]; then
                     continue
                 fi
@@ -2062,23 +2944,23 @@ $HOME/dev
                 if [[ -f "$env_file" ]]; then
                     local perms
                     if ! perms=$(get_file_perms "$env_file"); then
-                        result_unknown "Permission inspection failed for ${env_file}"
+                        result_unknown "Permission inspection failed for ${env_file}" "Run ls -ld \"${env_file}\"; see https://iscooked.com/unknowns#files"
                         env_inspection_incomplete=true
                         continue
                     fi
                     if [[ ! "$perms" =~ ^[0-7]+$ ]]; then
-                        result_unknown "Permission inspection returned an invalid value for ${env_file}"
+                        result_unknown "Permission inspection returned an invalid value for ${env_file}" "Run ls -ld \"${env_file}\"; see https://iscooked.com/unknowns#files"
                         env_inspection_incomplete=true
                         continue
                     fi
-                    if [[ "${perms: -1}" -ge 4 ]]; then
+                    if (( (8#$perms & 4) != 0 )); then
                         if grep -qiE '(api_key|api_secret|token|password|secret)=' "$env_file" 2>/dev/null; then
-                            result_cooked ".env file with API keys is world-readable: ${env_file} (mode ${perms})"
+                            result_cooked ".env file with API keys is world-readable: ${env_file} (mode ${perms})" "Restrict permissions: chmod 600 \"${env_file}\""
                             found_exposed_env=true
                         else
                             local env_grep_rc=$?
                             if [[ "$env_grep_rc" -gt 1 ]]; then
-                                result_unknown "Secret scan failed for ${env_file}"
+                                result_unknown "Secret scan failed for ${env_file}" "Check readability with ls -ld \"${env_file}\"; see https://iscooked.com/unknowns#files"
                                 env_inspection_incomplete=true
                             fi
                         fi
@@ -2092,15 +2974,48 @@ $HOME/dev
         result_safe "No world-readable .env files with API keys found"
     fi
 
+    # Check permissions on coding-agent and dev credential stores (never print contents)
+    local cred_stores_list="$HOME/.claude/.credentials.json
+$HOME/.config/opencode/auth.json
+$HOME/.codex/auth.json
+$HOME/.config/gh/hosts.yml
+$HOME/.aws/credentials
+$HOME/.netrc
+$HOME/.ssh/id_rsa
+$HOME/.ssh/id_ed25519"
+    local private_cred_count=0
+    while IFS= read -r cred_file; do
+        [[ -n "$cred_file" && -f "$cred_file" ]] || continue
+        local cperms
+        if ! cperms=$(get_file_perms "$cred_file"); then
+            result_unknown "Permission inspection failed for ${cred_file}" "Run ls -ld \"${cred_file}\"; see https://iscooked.com/unknowns#files"
+            continue
+        fi
+        if [[ ! "$cperms" =~ ^[0-7]+$ ]]; then
+            result_unknown "Permission inspection returned an invalid value for ${cred_file}" "Run ls -ld \"${cred_file}\"; see https://iscooked.com/unknowns#files"
+            continue
+        fi
+        if (( (8#$cperms & 6) != 0 )); then
+            result_cooked "Credential store ${cred_file} is world-readable or world-writable (mode ${cperms})" "Restrict permissions: chmod 600 \"${cred_file}\""
+        elif (( (8#$cperms & 48) != 0 )); then
+            result_warming "Credential store ${cred_file} is group-readable or group-writable (mode ${cperms})" "Restrict permissions: chmod 600 \"${cred_file}\""
+        else
+            private_cred_count=$((private_cred_count + 1))
+        fi
+    done <<< "$cred_stores_list"
+    if [[ "$private_cred_count" -gt 0 ]]; then
+        result_safe "${private_cred_count} coding-agent/dev credential store(s) have private permissions (mode 600/400)"
+    fi
+
     # Check if models directory is owned properly
     if [[ -d "$HOME/.ollama" ]]; then
         local ollama_owner
         if ! ollama_owner=$(get_file_owner "$HOME/.ollama"); then
-            result_unknown "~/.ollama owner inspection failed"
+            result_unknown "~/.ollama owner inspection failed" "Run ls -ld ~/.ollama; see https://iscooked.com/unknowns#files"
         elif [[ -z "$ollama_owner" || "$ollama_owner" == "unknown" ]]; then
-            result_unknown "~/.ollama owner is UNKNOWN"
+            result_unknown "~/.ollama owner is UNKNOWN" "Run ls -ld ~/.ollama; see https://iscooked.com/unknowns#files"
         elif [[ "$ollama_owner" != "$(whoami)" && "$ollama_owner" != "ollama" ]]; then
-            result_warming "~/.ollama is owned by '${ollama_owner}' instead of you"
+            result_warming "~/.ollama is owned by '${ollama_owner}' instead of you" "Fix ownership with chown -R \"$(whoami)\" ~/.ollama"
         fi
     fi
 }
@@ -2119,23 +3034,23 @@ $HOME/.local/share/fish/fish_history"
             inspected_any=true
             local key_leaks=""
             local history_grep_failed=false
-            if key_leaks=$(grep -ciE '(sk-[a-zA-Z0-9]{20,}|api_key=|OPENAI_API_KEY|ANTHROPIC_API_KEY|HF_TOKEN)' "$hist_file" 2>/dev/null); then
+            if key_leaks=$(grep -ciE '(sk-[a-zA-Z0-9]{20,}|sk-ant-[a-zA-Z0-9_-]{10,}|sk-proj-[a-zA-Z0-9_-]{10,}|sk-or-[a-zA-Z0-9_-]{10,}|ghp_[a-zA-Z0-9]{10,}|github_pat_[a-zA-Z0-9_]{10,}|hf_[a-zA-Z0-9]{10,}|AKIA[0-9A-Z]{16}|api_key=|OPENAI_API_KEY|ANTHROPIC_API_KEY|OPENROUTER_API_KEY|GEMINI_API_KEY|HF_TOKEN)' "$hist_file" 2>/dev/null); then
                 :
             else
                 local history_grep_rc=$?
                 if [[ "$history_grep_rc" -eq 1 ]]; then
                     key_leaks=0
                 else
-                    result_unknown "Shell history inspection failed for $(basename "$hist_file")"
+                    result_unknown "Shell history inspection failed for $(basename "$hist_file")" "Check permissions on ${hist_file}; see https://iscooked.com/unknowns#files"
                     history_grep_failed=true
                 fi
             fi
             if [[ "$history_grep_failed" == "false" && ! "$key_leaks" =~ ^[0-9]+$ ]]; then
-                result_unknown "Shell history inspection returned an invalid count for $(basename "$hist_file")"
+                result_unknown "Shell history inspection returned an invalid count for $(basename "$hist_file")" "Inspect ${hist_file} manually; see https://iscooked.com/unknowns#files"
                 history_grep_failed=true
             fi
             if [[ "$history_grep_failed" == "false" && "$key_leaks" -gt 0 ]]; then
-                result_cooked "Shell history contains ~${key_leaks} potential API key(s): $(basename "$hist_file")"
+                result_cooked "Shell history contains ~${key_leaks} potential API key(s): $(basename "$hist_file")" "Rotate exposed keys and scrub matching lines from $(basename "$hist_file")"
             elif [[ "$history_grep_failed" == "false" ]]; then
                 result_safe "No API keys found in $(basename "$hist_file")"
             fi
@@ -2143,11 +3058,11 @@ $HOME/.local/share/fish/fish_history"
             # Check permissions on history file
             local hist_perms
             if ! hist_perms=$(get_file_perms "$hist_file"); then
-                result_unknown "Permission inspection failed for $(basename "$hist_file")"
+                result_unknown "Permission inspection failed for $(basename "$hist_file")" "Run ls -ld \"${hist_file}\"; see https://iscooked.com/unknowns#files"
             elif [[ ! "$hist_perms" =~ ^[0-7]+$ ]]; then
-                result_unknown "Permission inspection returned an invalid value for $(basename "$hist_file")"
-            elif [[ "${hist_perms: -1}" -ge 4 ]]; then
-                result_warming "$(basename "$hist_file") is world-readable (mode ${hist_perms})"
+                result_unknown "Permission inspection returned an invalid value for $(basename "$hist_file")" "Run ls -ld \"${hist_file}\"; see https://iscooked.com/unknowns#files"
+            elif (( (8#$hist_perms & 4) != 0 )); then
+                result_warming "$(basename "$hist_file") is world-readable (mode ${hist_perms})" "Restrict permissions: chmod 600 \"${hist_file}\""
             fi
         fi
     done <<< "$history_files_list"
@@ -2168,11 +3083,11 @@ $HOME/Library/Logs/LM Studio"
             inspected_any=true
             local log_perms
             if ! log_perms=$(get_file_perms "$log_dir"); then
-                result_unknown "Permission inspection failed for ${log_dir}"
+                result_unknown "Permission inspection failed for ${log_dir}" "Run ls -ld \"${log_dir}\"; see https://iscooked.com/unknowns#files"
             elif [[ ! "$log_perms" =~ ^[0-7]+$ ]]; then
-                result_unknown "Permission inspection returned an invalid value for ${log_dir}"
-            elif [[ "${log_perms: -1}" -ge 4 ]]; then
-                result_warming "AI log directory is world-readable: ${log_dir}"
+                result_unknown "Permission inspection returned an invalid value for ${log_dir}" "Run ls -ld \"${log_dir}\"; see https://iscooked.com/unknowns#files"
+            elif (( (8#$log_perms & 4) != 0 )); then
+                result_warming "AI log directory is world-readable: ${log_dir}" "Restrict permissions: chmod 700 \"${log_dir}\""
             else
                 result_safe "AI log directory has restrictive permissions: ${log_dir}"
             fi
@@ -2322,7 +3237,7 @@ check_model_code_execution() {
     fi
     local snapshot state service pid found=false
     if ! snapshot=$(_model_code_snapshot 2>/dev/null); then
-        result_unknown "Model code inspection unavailable; review active runtime settings (+4)."
+        result_unknown "Model code inspection unavailable; review active runtime settings." "Check active vLLM/TGI/SGLang launch flags; see https://iscooked.com/unknowns#runtime"
         return
     fi
     while IFS='|' read -r state service pid; do
@@ -2330,19 +3245,19 @@ check_model_code_execution() {
         found=true
         case "$state" in
             unavailable)
-                result_unknown "Model code inspection unavailable; review active runtime settings (+4)." ;;
+                result_unknown "Model code inspection unavailable; review active runtime settings." "Check active vLLM/TGI/SGLang launch flags; see https://iscooked.com/unknowns#runtime" ;;
             unknown)
-                result_unknown "$service PID $pid: could not establish active remote-code configuration from launch arguments (+4); review runtime settings and code." ;;
+                result_unknown "$service PID $pid: could not establish active remote-code configuration from launch arguments; review runtime settings and code." "Inspect runtime config for --trust-remote-code; see https://iscooked.com/unknowns#runtime" ;;
             absent)
                 result_skip "$service PID $pid: no explicit remote-code launch setting observed; configuration, environment overrides and runtime behavior are not inspected." ;;
             disabled)
                 result_skip "$service PID $pid: launch setting explicitly disables trust-remote-code; runtime behavior is not verified." ;;
             pinned)
-                result_warming "$service PID $pid allows remote model code (--trust-remote-code); an immutable code revision is specified (+4). Review the executable code: a pin does not prove safety." ;;
+                result_warming "$service PID $pid allows remote model code (--trust-remote-code); an immutable code revision is specified (+4). Review the executable code: a pin does not prove safety." "Remove --trust-remote-code if not required, or audit the pinned revision" ;;
             enabled)
-                result_warming "$service PID $pid allows remote model code (--trust-remote-code) without a verified immutable code revision (+4). Review executable code and pin its revision; a model weights --revision alone is insufficient." ;;
+                result_warming "$service PID $pid allows remote model code (--trust-remote-code) without a verified immutable code revision (+4). Review executable code and pin its revision; a model weights --revision alone is insufficient." "Remove --trust-remote-code or pin an audited 40-char --code-revision commit" ;;
             *)
-                result_unknown "Model code inspection unavailable; review active runtime settings (+4)." ;;
+                result_unknown "Model code inspection unavailable; review active runtime settings." "Check active vLLM/TGI/SGLang launch flags; see https://iscooked.com/unknowns#runtime" ;;
         esac
     done <<< "$snapshot"
     if [[ "$found" == false ]]; then
@@ -2637,16 +3552,16 @@ check_runtime_versions() {
         case "$state" in
             version)
                 if [[ "$service" == "LiteLLM proxy" && "$exact" == exact ]] && litellm_release_compromised "$version"; then
-                    result_cooked "${label} reports ${version}, a release published with credential-stealing malware; treat the host as compromised, rotate its provider keys and master key, and redeploy ${LITELLM_RECOVERY_GUIDANCE}"
+                    result_cooked "${label} reports ${version}, a release published with credential-stealing malware; treat the host as compromised, rotate its provider keys and master key, and redeploy ${LITELLM_RECOVERY_GUIDANCE}" "Rotate all exposed keys immediately and redeploy ${LITELLM_RECOVERY_GUIDANCE}"
                 elif [[ "$service" == Ollama && "$version" == "0.0.0" ]]; then
-                    result_unknown "${label} reports development build 0.0.0; confirm it includes fixes for ${advisories}"
+                    result_unknown "${label} reports development build 0.0.0; confirm it includes fixes for ${advisories}" "Verify Ollama commit includes fixes for ${advisories}"
                 elif version_below "$version" "$minimum" || { [[ "$exact" == prerelease ]] && ! version_below "$minimum" "$version"; }; then
                     if [[ "$bind_known" == false ]]; then
-                        result_warming "${label} reports ${shown}, older than ${minimum} (${advisories}); bind exposure not verified"
+                        result_warming "${label} reports ${shown}, older than ${minimum} (${advisories}); bind exposure not verified" "Upgrade ${service} to ${minimum} or later"
                     elif [[ "$exposed" == true ]]; then
-                        result_cooked "${label} reports ${shown}, older than ${minimum} (${advisories}), and listens beyond localhost"
+                        result_cooked "${label} reports ${shown}, older than ${minimum} (${advisories}), and listens beyond localhost" "Upgrade ${service} to ${minimum} or later and bind to 127.0.0.1"
                     else
-                        result_warming "${label} reports ${shown}, older than ${minimum} (${advisories}); bound to localhost"
+                        result_warming "${label} reports ${shown}, older than ${minimum} (${advisories}); bound to localhost" "Upgrade ${service} to ${minimum} or later"
                     fi
                 else
                     result_safe "${label} reports ${shown}, at or above ${minimum} (advisories reviewed ${RUNTIME_VERSIONS_REVIEWED})"
@@ -2654,9 +3569,9 @@ check_runtime_versions() {
             absent)
                 result_skip "${label} does not publish its version on ${route}; check the deployed version against LiteLLM security advisories and rule out ${LITELLM_COMPROMISED_RELEASES// /, }" ;;
             unparsed)
-                result_unknown "${label}: version string not recognized; confirm ${minimum} or later (${advisories})" ;;
+                result_unknown "${label}: version string not recognized; confirm ${minimum} or later (${advisories})" "Verify ${service} version manually; see https://iscooked.com/unknowns#runtime" ;;
             *)
-                result_unknown "${label}: version unavailable (HTTP ${status}); confirm ${minimum} or later (${advisories})" ;;
+                result_unknown "${label}: version unavailable (HTTP ${status}); confirm ${minimum} or later (${advisories})" "Verify ${service} version manually; see https://iscooked.com/unknowns#runtime" ;;
         esac
     done <<< "$probe_list"
 
@@ -2672,10 +3587,10 @@ check_runtime_versions() {
         esac
     done <<< "$findings"
     if [[ "$ioc_count" -gt 0 ]]; then
-        result_cooked "LiteLLM supply-chain malware file found: ${first_ioc}$( [[ "$ioc_count" -le 1 ]] || printf ' (+%s more)' "$((ioc_count - 1))" ); treat this machine as compromised, stop the loader, remove the files, reinstall ${LITELLM_RECOVERY_GUIDANCE} and rotate every credential it could reach"
+        result_cooked "LiteLLM supply-chain malware file found: ${first_ioc}$( [[ "$ioc_count" -le 1 ]] || printf ' (+%s more)' "$((ioc_count - 1))" ); treat this machine as compromised, stop the loader, remove the files, reinstall ${LITELLM_RECOVERY_GUIDANCE} and rotate every credential it could reach" "Remove dropped malware files, rotate all credentials, and reinstall ${LITELLM_RECOVERY_GUIDANCE}"
     fi
     if [[ "$bad_count" -gt 0 ]]; then
-        result_cooked "Compromised LiteLLM release ${first_bad}$( [[ "$bad_count" -le 1 ]] || printf ' (+%s more)' "$((bad_count - 1))" ): published with credential-stealing malware; reinstall ${LITELLM_RECOVERY_GUIDANCE} and rotate every credential this machine could reach"
+        result_cooked "Compromised LiteLLM release ${first_bad}$( [[ "$bad_count" -le 1 ]] || printf ' (+%s more)' "$((bad_count - 1))" ): published with credential-stealing malware; reinstall ${LITELLM_RECOVERY_GUIDANCE} and rotate every credential this machine could reach" "Reinstall ${LITELLM_RECOVERY_GUIDANCE} and rotate all credentials on this host"
     fi
     if [[ "$ioc_count" -eq 0 && "$bad_count" -eq 0 && -n "$ok_versions" ]]; then
         result_safe "LiteLLM ${ok_versions} found in common Python environments; not a compromised release (${LITELLM_COMPROMISED_RELEASES// /, })"
@@ -2709,11 +3624,11 @@ check_ollama_config() {
             esac
             case "$bind_host" in
                 0.0.0.0|::)
-                    result_cooked "OLLAMA_HOST selects all interfaces in the scanner environment; verify running service settings" ;;
+                    result_cooked "OLLAMA_HOST selects all interfaces in the scanner environment; verify running service settings" "Set OLLAMA_HOST=127.0.0.1:11434 to bind Ollama to localhost" ;;
                 127.0.0.1|localhost|::1)
                     result_safe "OLLAMA_HOST selects loopback in the scanner environment; running service settings are not verified" ;;
                 *)
-                    result_unknown "OLLAMA_HOST requires address resolution in the scanner environment; verify the intended bind and running service settings" ;;
+                    result_unknown "OLLAMA_HOST requires address resolution in the scanner environment; verify the intended bind and running service settings" "Use an explicit IP such as 127.0.0.1:11434; see https://iscooked.com/unknowns#runtime" ;;
             esac
         fi
     else
@@ -2723,18 +3638,18 @@ check_ollama_config() {
     # Check OLLAMA_ORIGINS
     local ollama_origins="${OLLAMA_ORIGINS:-}"
     if [[ "$ollama_origins" == "*" ]]; then
-        result_cooked "OLLAMA_ORIGINS=* in the scanner environment permits any origin; verify running service settings"
+        result_cooked "OLLAMA_ORIGINS=* in the scanner environment permits any origin; verify running service settings" "Restrict OLLAMA_ORIGINS to explicit trusted origins instead of *"
     elif [[ -n "$ollama_origins" ]]; then
-        result_warming "OLLAMA_ORIGINS is set in the scanner environment; review permitted origins and running service settings"
+        result_warming "OLLAMA_ORIGINS is set in the scanner environment; review permitted origins and running service settings" "Keep OLLAMA_ORIGINS limited to trusted local origins"
     fi
 
     # Check systemd service file (Linux only)
     if [[ "$OS_TYPE" == "linux" && -f /etc/systemd/system/ollama.service ]]; then
         local svc_user
         if ! svc_user=$(awk -F= '/^[[:space:]]*User[[:space:]]*=/ { value=$2; gsub(/^[[:space:]]+|[[:space:]]+$/, "", value) } END { print value }' /etc/systemd/system/ollama.service 2>/dev/null); then
-            result_unknown "Ollama systemd service file is unreadable; effective service user is unknown"
+            result_unknown "Ollama systemd service file is unreadable; effective service user is unknown" "Inspect /etc/systemd/system/ollama.service with sudo; see https://iscooked.com/unknowns#runtime"
         elif [[ "$svc_user" == "root" || -z "$svc_user" ]]; then
-            result_warming "Ollama systemd service file selects root or omits User=; overrides and the active user are not verified"
+            result_warming "Ollama systemd service file selects root or omits User=; overrides and the active user are not verified" "Set User=ollama in /etc/systemd/system/ollama.service"
         else
             result_safe "Ollama systemd service file selects a non-root user; overrides and the active user are not verified"
         fi
@@ -2756,7 +3671,162 @@ check_ollama_config() {
     fi
 }
 
-# ─── Score & Summary ────────────────────────────────────────────────────────────
+# ─── Score, Diff & Summary ──────────────────────────────────────────────────────
+
+validate_diff_file() {
+    local diff_path="$1"
+    python3 -I -B -S - "$diff_path" <<'DIFF_VAL_PY'
+import json
+import os
+import stat
+import sys
+
+path = sys.argv[1]
+LIMIT = 10485760
+try:
+    s = os.stat(path)
+    if not stat.S_ISREG(s.st_mode) or s.st_size > LIMIT:
+        raise ValueError("Diff baseline must be a regular JSON file under 10 MiB.")
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as stream:
+        raw = stream.read(LIMIT + 1)
+    if len(raw) > LIMIT:
+        raise ValueError("Diff baseline exceeds 10 MiB.")
+    obj = json.loads(raw.decode("utf-8"))
+    if (not isinstance(obj, dict)
+            or obj.get("schema_version") != 1
+            or not isinstance(obj.get("findings"), list)
+            or not isinstance(obj.get("summary", {}).get("score", {}).get("value"), int)):
+        raise ValueError("Diff baseline is not a valid iscooked schema_version 1 JSON report.")
+except (OSError, ValueError, UnicodeDecodeError, TypeError) as exc:
+    print(f"Invalid --diff file: {exc}", file=sys.stderr)
+    sys.exit(2)
+DIFF_VAL_PY
+}
+
+compute_diff_json() {
+    local displayed_score="$SCORE"
+    [[ "$displayed_score" -le 100 ]] || displayed_score=100
+    local index
+    {
+        for ((index=0; index<TOTAL_CHECKS; index++)); do
+            printf '%s\0' "${FINDING_CHECK_IDS[index]}" "${FINDING_CHECK_TITLES[index]}" \
+                "${FINDING_STATUSES[index]}" "${FINDING_MESSAGES[index]}"
+        done
+    } | python3 -I -B -S -c '
+from collections import Counter
+import json
+import os
+import re
+import sys
+
+def clean(text):
+    return re.sub(r"[\x00-\x1f\x7f]", "", str(text))
+
+diff_path = sys.argv[1]
+curr_score = int(sys.argv[2])
+LIMIT = 10485760
+fd = os.open(diff_path, os.O_RDONLY | os.O_NONBLOCK)
+with os.fdopen(fd, "rb") as stream:
+    prev = json.loads(stream.read(LIMIT).decode("utf-8"))
+
+prev_score = int(prev["summary"]["score"]["value"])
+PROBLEM_STATES = {"critical", "warning", "unknown"}
+
+prev_counts = Counter()
+prev_meta = {}
+for item in prev.get("findings", []):
+    if not isinstance(item, dict):
+        continue
+    st = str(item.get("status", ""))
+    if st not in PROBLEM_STATES:
+        continue
+    chk = item.get("check", {})
+    cid = clean(chk.get("id", ""))
+    title = clean(chk.get("title", ""))
+    msg = clean(item.get("message", ""))
+    key = (cid, st, msg)
+    prev_counts[key] += 1
+    prev_meta.setdefault(key, {"check": {"id": cid, "title": title}, "status": st, "message": msg})
+
+fields = sys.stdin.buffer.read().decode("utf-8", errors="replace").split("\0")
+fields.pop()
+curr_counts = Counter()
+curr_meta = {}
+for start in range(0, len(fields), 4):
+    cid, title, st, msg = fields[start:start + 4]
+    if st not in PROBLEM_STATES:
+        continue
+    key = (cid, st, msg)
+    curr_counts[key] += 1
+    curr_meta.setdefault(key, {"check": {"id": cid, "title": title}, "status": st, "message": msg})
+
+resolved = []
+for key, count in (prev_counts - curr_counts).items():
+    for _ in range(count):
+        resolved.append(prev_meta[key])
+
+new = []
+for key, count in (curr_counts - prev_counts).items():
+    for _ in range(count):
+        new.append(curr_meta[key])
+
+print(json.dumps({
+    "previous_score": prev_score,
+    "current_score": curr_score,
+    "score_delta": curr_score - prev_score,
+    "resolved_count": len(resolved),
+    "new_count": len(new),
+    "resolved": resolved,
+    "new": new,
+}, ensure_ascii=True))
+' "$DIFF_FILE" "$displayed_score"
+}
+
+print_diff_text() {
+    [[ -n "$DIFF_JSON" ]] || return 0
+    local tag body
+    echo -e "  ${WHITE}${BOLD}DIFF VS PREVIOUS SCAN${RESET}"
+    while IFS=$'\t' read -r tag body; do
+        case "$tag" in
+            score) echo -e "  ${DIM}${body}${RESET}" ;;
+            resolved_hdr) echo -e "  ${GREEN}${BOLD}${body}${RESET}" ;;
+            resolved) echo -e "    ${GREEN}- ${body}${RESET}" ;;
+            new_hdr) echo -e "  ${RED}${BOLD}${body}${RESET}" ;;
+            new) echo -e "    ${RED}+ ${body}${RESET}" ;;
+            none) echo -e "    ${DIM}${body}${RESET}" ;;
+        esac
+    done < <(printf '%s' "$DIFF_JSON" | python3 -I -B -S -c '
+import json, sys
+d = json.load(sys.stdin)
+prev_s = d["previous_score"]
+curr_s = d["current_score"]
+delta = d["score_delta"]
+res_count = d["resolved_count"]
+new_count = d["new_count"]
+sign = "+" if delta > 0 else ""
+print(f"score\tScore change: {sign}{delta} points ({prev_s}% -> {curr_s}%)")
+print(f"resolved_hdr\tResolved ({res_count}):")
+if d["resolved"]:
+    for item in d["resolved"]:
+        cid = item["check"]["id"]
+        st = item["status"]
+        msg = item["message"]
+        print(f"resolved\t[{cid}] {st}: {msg}")
+else:
+    print("none\t(none)")
+print(f"new_hdr\tNew ({new_count}):")
+if d["new"]:
+    for item in d["new"]:
+        cid = item["check"]["id"]
+        st = item["status"]
+        msg = item["message"]
+        print(f"new\t[{cid}] {st}: {msg}")
+else:
+    print("none\t(none)")
+')
+    echo ""
+}
 
 summary_status() {
     if [[ "$COOKED_COUNT" -gt 0 ]]; then
@@ -2797,16 +3867,10 @@ print_summary() {
         level_text="STILL DEFROSTING"
         level_color="$CYAN"
         bar_char="░"
-    elif [[ "$displayed_score" -lt 15 ]]; then
-        if [[ $((COOKED_COUNT + WARMING_COUNT)) -gt 0 ]]; then
-            level_text="SLIGHTLY WARM"
-            level_color="$CYAN"
-            bar_char="▒"
-        elif [[ $((UNKNOWN_COUNT + SKIPPED_COUNT)) -gt 0 ]]; then
-            level_text="STILL DEFROSTING"
-            level_color="$CYAN"
-            bar_char="░"
-        fi
+    elif [[ "$displayed_score" -lt 15 && $((COOKED_COUNT + WARMING_COUNT)) -gt 0 ]]; then
+        level_text="SLIGHTLY WARM"
+        level_color="$CYAN"
+        bar_char="▒"
     fi
     [[ "$COOKED_COUNT" -eq 0 ]] || level_color="$RED"
 
@@ -2835,6 +3899,7 @@ print_summary() {
         no_findings) echo -e "  ${GREEN}No heat from the checks that ran.${RESET}" ;;
     esac
     echo ""
+    print_diff_text
 }
 
 print_json_report() {
@@ -2846,7 +3911,8 @@ print_json_report() {
     {
         for ((index=0; index<TOTAL_CHECKS; index++)); do
             printf '%s\0' "${FINDING_CHECK_IDS[index]}" "${FINDING_CHECK_TITLES[index]}" \
-                "${FINDING_STATUSES[index]}" "${FINDING_MESSAGES[index]}" "${FINDING_POINTS[index]}"
+                "${FINDING_STATUSES[index]}" "${FINDING_MESSAGES[index]}" "${FINDING_POINTS[index]}" \
+                "${FINDING_HINTS[index]}"
         done
     } | python3 -I -B -S -c '
 import json
@@ -2854,44 +3920,58 @@ import sys
 
 version, platform, status = sys.argv[1:4]
 (total, critical, warning, passed, unknown, skipped, score,
- areas_started, areas_observations, areas_unknown, areas_skips) = map(int, sys.argv[4:])
+ areas_started, areas_observations, areas_unknown, areas_skips) = map(int, sys.argv[4:15])
+problems_only, diff_raw = sys.argv[15:17]
 fields = sys.stdin.buffer.read().decode("utf-8", errors="replace").split("\0")
 fields.pop()
-if len(fields) != total * 5:
+if len(fields) != total * 6:
     raise SystemExit("Incomplete report records")
 findings = []
-for start in range(0, len(fields), 5):
-    check_id, title, state, message, points = fields[start:start + 5]
-    findings.append({"check": {"id": check_id, "title": title},
-                     "status": state, "message": message, "points": int(points)})
-json.dump({"schema_version": 1, "scanner": {"name": "iscooked", "version": version},
-           "platform": platform, "completed": True,
-           "summary": {"status": status,
-                       "counts": {"total": total, "critical": critical, "warning": warning,
-                                  "passed": passed, "unknown": unknown, "skipped": skipped},
-                       "score": {"value": min(score, 100), "raw_value": score, "maximum": 100,
-                                 "kind": "heuristic", "includes_unknown": True}},
-           "coverage": {"areas_started": areas_started,
-                        "areas_with_observations": areas_observations,
-                        "areas_with_unknown": areas_unknown,
-                        "areas_with_skips": areas_skips},
-           "findings": findings}, sys.stdout, ensure_ascii=True, indent=2)
+for start in range(0, len(fields), 6):
+    check_id, title, state, message, points, hint = fields[start:start + 6]
+    if problems_only == "true" and state not in ("critical", "warning", "unknown"):
+        continue
+    item = {"check": {"id": check_id, "title": title},
+            "status": state, "message": message, "points": int(points)}
+    if hint:
+        item["remediation"] = hint
+    findings.append(item)
+report = {"schema_version": 1, "scanner": {"name": "iscooked", "version": version},
+          "platform": platform, "completed": True,
+          "summary": {"status": status,
+                      "counts": {"total": total, "critical": critical, "warning": warning,
+                                 "passed": passed, "unknown": unknown, "skipped": skipped},
+                      "score": {"value": min(score, 100), "raw_value": score, "maximum": 100,
+                                "kind": "heuristic", "includes_unknown": False}},
+          "coverage": {"areas_started": areas_started,
+                       "areas_with_observations": areas_observations,
+                       "areas_with_unknown": areas_unknown,
+                       "areas_with_skips": areas_skips},
+          "findings": findings}
+if diff_raw:
+    report["diff"] = json.loads(diff_raw)
+json.dump(report, sys.stdout, ensure_ascii=True, indent=2)
 print()
 ' "$VERSION" "$OS_TYPE" "$(summary_status)" "$TOTAL_CHECKS" "$COOKED_COUNT" \
         "$WARMING_COUNT" "$SAFE_COUNT" "$UNKNOWN_COUNT" "$SKIPPED_COUNT" "$SCORE" \
-        "$STARTED_AREA_COUNT" "$areas_with_observations" "$areas_with_unknown" "$areas_with_skips"
+        "$STARTED_AREA_COUNT" "$areas_with_observations" "$areas_with_unknown" "$areas_with_skips" \
+        "$PROBLEMS_ONLY" "$DIFF_JSON"
 }
 
 usage() {
     cat <<'USAGE'
 Usage: bash iscooked.com [options]
 
-Examine the local AI setup. The scanner does not change its configuration.
+Examine coding agent and local AI setups. Local-only, read-only, zero telemetry.
 
   -h, --help          Show this help without a scan.
   --version           Show the scanner version without a scan.
   --json              Write one JSON report (requires Python 3).
   --no-color          Disable terminal colors.
+  -q, --problems-only Show only critical, warning, and unknown findings in output.
+  --only CHECKS       Run only comma-separated check IDs or names (e.g. 01,mcp,agents,versions).
+  --skip CHECKS       Skip comma-separated check IDs or names.
+  --diff FILE         Compare findings and score against a prior --json report (requires Python 3).
   --fail-on LEVEL     Return 1 for the selected findings:
                       critical: critical findings
                       warning:  critical findings or warnings
@@ -2917,6 +3997,15 @@ configure_output() {
     fi
 }
 
+check_bash_version() {
+    local major="${1:-${BASH_VERSINFO[0]}}" minor="${2:-${BASH_VERSINFO[1]}}"
+    if [[ "$major" -lt 3 || ( "$major" -eq 3 && "$minor" -lt 2 ) ]]; then
+        printf '%s\n' 'Bash 3.2 or later is required. Select that Bash executable to run this file.' >&2
+        return 2
+    fi
+    return 0
+}
+
 exit_for_findings() {
     case "$FAIL_ON" in
         critical) [[ "$COOKED_COUNT" -eq 0 ]] ;;
@@ -2936,6 +4025,34 @@ main() {
             --version) information=version ;;
             --json) OUTPUT_FORMAT=json ;;
             --no-color) COLOR_MODE=never ;;
+            -q|--problems-only) PROBLEMS_ONLY=true ;;
+            --only)
+                if [[ $# -lt 2 ]]; then
+                    printf '%s\n' 'Missing --only check list. Use --help.' >&2
+                    return 2
+                fi
+                shift
+                ONLY_CHECKS=$(parse_check_list "$1") || {
+                    printf '%s\n' 'Invalid --only check selector. Use --help.' >&2
+                    return 2
+                } ;;
+            --skip)
+                if [[ $# -lt 2 ]]; then
+                    printf '%s\n' 'Missing --skip check list. Use --help.' >&2
+                    return 2
+                fi
+                shift
+                SKIP_CHECKS=$(parse_check_list "$1") || {
+                    printf '%s\n' 'Invalid --skip check selector. Use --help.' >&2
+                    return 2
+                } ;;
+            --diff)
+                if [[ $# -lt 2 ]]; then
+                    printf '%s\n' 'Missing --diff baseline JSON file. Use --help.' >&2
+                    return 2
+                fi
+                shift
+                DIFF_FILE="$1" ;;
             --fail-on)
                 if [[ $# -lt 2 ]]; then
                     printf '%s\n' 'Missing --fail-on level. Use --help.' >&2
@@ -2954,10 +4071,7 @@ main() {
         help) usage; return 0 ;;
         version) printf 'iscooked %s\n' "$VERSION"; return 0 ;;
     esac
-    if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
-        printf '%s\n' 'Bash 4 or later is required. Select that Bash executable to run this file.' >&2
-        return 2
-    fi
+    check_bash_version "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" || return 2
     if [[ "$OS_TYPE" != linux && "$OS_TYPE" != macos ]]; then
         printf '%s\n' 'This scanner supports Linux and macOS only.' >&2
         return 2
@@ -2976,7 +4090,15 @@ main() {
         printf '%s\n' 'JSON output requires python3. Use text output or install Python 3.' >&2
         return 2
     fi
+    if [[ -n "$DIFF_FILE" ]]; then
+        if ! command_exists python3; then
+            printf '%s\n' '--diff requires python3. Install Python 3 or omit --diff.' >&2
+            return 2
+        fi
+        validate_diff_file "$DIFF_FILE" || return 2
+    fi
     configure_output
+    FULL_SCAN=true
     if [[ "$OUTPUT_FORMAT" == text ]]; then
         banner
     fi
@@ -2998,6 +4120,10 @@ main() {
     run_check check_agent_gateway
     run_check check_model_code_execution
     run_check check_runtime_versions
+
+    if [[ -n "$DIFF_FILE" ]]; then
+        DIFF_JSON=$(compute_diff_json)
+    fi
 
     if [[ "$OUTPUT_FORMAT" == json ]]; then
         print_json_report

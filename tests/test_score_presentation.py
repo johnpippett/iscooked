@@ -105,7 +105,7 @@ def test_unknown_and_skipped_counts_remain_distinct():
     assert re.search(r"\b1 skipped\b", output)
 
 
-def test_example_fixture_scores_twenty_percent_and_is_slightly_warm():
+def test_example_fixture_scores_four_percent_and_is_slightly_warm():
     results = "\n".join(
         [
             "result_warming 'Fixture warning'",
@@ -116,8 +116,22 @@ def test_example_fixture_scores_twenty_percent_and_is_slightly_warm():
     )
     output = report_text(results)
 
-    assert re.search(r"\b20%\s+cooked\b", output, re.I)
+    assert re.search(r"\b4%\s+cooked\b", output, re.I)
     assert "SLIGHTLY WARM" in output
     assert "LOOKING FRESH" not in output
     assert re.search(r"\b4 unknown\b", output)
     assert re.search(r"\b9 skipped\b", output)
+
+
+def test_clean_scan_with_skips_is_looking_fresh():
+    results = "\n".join(
+        [
+            *["result_safe 'Fixture passed'"] * 4,
+            *["result_skip 'Fixture not applicable'"] * 9,
+        ]
+    )
+    output = report_text(results)
+
+    assert re.search(r"\b0%\s+cooked\b", output, re.I)
+    assert "LOOKING FRESH" in output
+    assert "STILL DEFROSTING" not in output

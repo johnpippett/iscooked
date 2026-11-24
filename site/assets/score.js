@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const POINTS = { critical: 10, warning: 4, unknown: 4, passed: 0, skipped: 0 };
+  const POINTS = { critical: 10, warning: 4, unknown: 0, passed: 0, skipped: 0 };
   const BAR_WIDTH = 40;
 
   function verdict(counts, rawScore) {
@@ -24,9 +24,8 @@
 
     if (c + w + p === 0) {
       level = "defrosting";
-    } else if (score < 15) {
-      if (c + w > 0) level = "warm";
-      else if (u + s > 0) level = "defrosting";
+    } else if (score < 15 && c + w > 0) {
+      level = "warm";
     }
 
     const LEVELS = {

@@ -2,28 +2,27 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/johnpippett/iscooked?style=social)](https://github.com/johnpippett/iscooked)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-1.3.1-blue)](https://github.com/johnpippett/iscooked/releases)
+[![Version](https://img.shields.io/badge/version-1.4.0-blue)](https://github.com/johnpippett/iscooked/releases)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos-lightgrey)](https://github.com/johnpippett/iscooked)
 
-`iscooked` is a local security scanner for AI services, containers, and agent settings.
+`iscooked` is a local security scanner for coding agents (Claude Code, Cursor, OpenCode, Codex CLI, MCP, OpenClaw), AI services, and containers.
 It runs as one Bash script and keeps the report on your machine.
 
 ## Start a scan
 
-The scanner needs Bash 4 or later. Some macOS installations provide Bash 3.2.
-Check your Bash version first:
+The scanner runs on Bash 3.2 or later, including the built-in macOS Bash and Linux Bash.
 
-```bash
-bash --version
-```
-
-To download, read, and run the scanner:
+To download, verify the SHA-256 checksum, read, and run the scanner:
 
 ```bash
 curl -fsSL https://iscooked.com/iscooked.com -o iscooked.com
+curl -fsSL https://iscooked.com/iscooked.com.sha256 -o iscooked.com.sha256
+sha256sum -c iscooked.com.sha256
 less iscooked.com
 bash iscooked.com
 ```
+
+On macOS, replace `sha256sum -c` with `shasum -a 256 -c`.
 
 If you want one command after you trust the source:
 
@@ -48,7 +47,7 @@ This example is synthetic. It does not scan your machine.
 ```text
 YOUR COOKED SCORE
 
-20% cooked  [▒▒▒▒▒▒▒▒                                ]
+4% cooked  [▒                                       ]
 
 SLIGHTLY WARM
 
@@ -58,7 +57,7 @@ SLIGHTLY WARM
 Turn down the heat. Check the warnings above.
 ```
 
-In this example, one warning and four unknown results add 20 points. Nine skipped results add no points. Start with critical findings. Then review warnings, unknown results, and skipped areas.
+In this example, one warning adds 4 points. Unknown and skipped results add no points while remaining visible in the summary counts. Start with critical findings, then review warnings, unknown results, and skipped areas. Non-passing findings also print an inline `↳` remediation hint (and a `"remediation"` field in JSON reports).
 
 The score is a capped heuristic. It is not a probability of compromise.
 
@@ -67,7 +66,7 @@ The score is a capped heuristic. It is not a probability of compromise.
 | Critical | `🔥 COOKED` | +10 |
 | Warning | `⚠  WARMING UP` | +4 |
 | Passed | `✅ SAFE` | +0 |
-| Unknown | `❓ UNKNOWN` | +4 |
+| Unknown | `❓ UNKNOWN` | +0 |
 | Skipped | `⏭  SKIP` | +0 |
 
 | Score | Verdict |
@@ -77,7 +76,7 @@ The score is a capped heuristic. It is not a probability of compromise.
 | 40–69 | `MEDIUM RARE` |
 | 70–100 | `FULLY COOKED` |
 
-A critical finding or warning can change a low-score verdict to `SLIGHTLY WARM`. A report with only unknown or skipped results can show `STILL DEFROSTING`. The scanner keeps unknown and skipped counts visible.
+A critical finding or warning lifts a low score to `SLIGHTLY WARM`. A report with zero passed, warning, and critical results shows `STILL DEFROSTING`. In full scans, an exposed port flagged in Check 01 correlates its score with Check 02 (+4 incremental) and Check 08 (+0 incremental) instead of triple-counting one port.
 
 ## LiteLLM PyPI compromise
 
@@ -91,21 +90,21 @@ The scanner has 17 check areas:
 
 | ID | Check area | Looks for |
 |---:|---|---|
-| 01 | Network Exposure | Common AI service ports and listener bind addresses, including SGLang, the LiteLLM proxy, and the llama.cpp RPC server. |
+| 01 | Network Exposure | Common AI and coding-agent ports and listener bind addresses, including Ollama, LM Studio, vLLM, SGLang, LiteLLM proxy, AnythingLLM, OpenCode Server, OpenClaw Gateway, and llama.cpp RPC. |
 | 02 | API Authentication | Authentication on selected model-list routes for identified Ollama, LM Studio, and vLLM services. |
 | 03 | Model File Permissions | World-readable or world-writable files in common model directories. |
-| 04 | Docker / Container Risks | Root users, privileged mode, host networking, daemon sockets, and host-root mounts. |
+| 04 | Docker / Container Risks | Root users, privileged mode, host networking, daemon sockets, and host-root mounts. Skips cleanly when the daemon is stopped. |
 | 05 | GPU Driver Exposure | GPU device permissions and known management listeners. |
 | 06 | Telemetry / Phoning Home | Scanner opt-out values and exact known entries in `/etc/hosts`. |
-| 07 | Firewall Status | Recognized Linux and macOS firewall backends. A missing firewall is critical only when an AI service listens beyond localhost; otherwise it is a warning. |
-| 08 | SSL/TLS Configuration | Plain HTTP on non-loopback AI service listeners. |
-| 09 | AI Process Enumeration | Candidate AI processes and the account that runs each process. |
-| 10 | Sensitive File Exposure | World-readable `.env` files that contain common API key names. |
-| 11 | History & Logs Leakage | API key patterns in shell history and permissions on common AI log directories. |
+| 07 | Firewall Status | Unprivileged Linux systemd/UFW state first, then recognized Linux and macOS firewall backends. A missing firewall is critical only when an AI service listens beyond localhost; otherwise it is a warning. |
+| 08 | SSL/TLS Configuration | Plain HTTP on non-loopback AI service listeners, with an HTTPS fallback probe before marking inconclusive. |
+| 09 | AI Process Enumeration | Candidate AI and coding-agent processes (`ollama`, `vllm`, `litellm`, `openclaw`, `opencode`, `open-webui`, `mcp-server`, etc.) and the account that runs each process. |
+| 10 | Sensitive File Exposure | Git-tracked `.env` files, world-readable `.env` files with API keys, and permissions on coding-agent and dev credential stores (`~/.claude/.credentials.json`, `~/.config/opencode/auth.json`, `~/.codex/auth.json`, `~/.config/gh/hosts.yml`, `~/.aws/credentials`, `~/.netrc`, SSH keys). |
+| 11 | History & Logs Leakage | OpenAI, Anthropic, OpenRouter, GitHub, Hugging Face, Gemini, and AWS key patterns in shell history and permissions on common AI log directories. |
 | 12 | Ollama-Specific Checks | `OLLAMA_HOST`, `OLLAMA_ORIGINS`, and selected service settings. |
 | 13 | Browser Remote Debugging | Chromium-family debugging flags, listeners, and `/json/version` metadata. |
-| 14 | MCP Configuration | Selected Model Context Protocol client files, filesystem grants, and permissions. |
-| 15 | Agent Gateway Configuration | Selected OpenClaw settings when the installed CLI is 2026.9.3 or later. |
+| 14 | MCP Configuration | 8+ MCP clients (Claude Desktop/Code, Cursor, OpenCode, Windsurf, Zed, VS Code/Copilot, Cline, Roo Code, Codex CLI TOML, Gemini/Antigravity): JSONC/TOML, filesystem grants, plain non-loopback `http://` URLs, unpinned `npx -y`, hardcoded project secrets, and xattr ACL checks. |
+| 15 | Coding Agent Permissions & Gateways | Claude Code (`bypassPermissions`, wildcard `Bash` allowlists, project hooks), OpenCode permissions, Codex CLI `config.toml`, Cursor auto-run/YOLO, OpenClaw JSON/JSONC policies, and invisible/bidi Unicode prompt-injection checks in instruction files (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.cursor/rules/*.mdc`, `.windsurfrules`, `.github/copilot-instructions.md`). |
 | 16 | Remote Model Code | Remote-code flags in recognized vLLM, Text Generation Inference, and SGLang launches. |
 | 17 | Runtime Versions | Ollama, vLLM, and LiteLLM proxy versions below the minimum that fixes reviewed advisories, plus LiteLLM releases that shipped malware. |
 
@@ -113,18 +112,18 @@ The scanner has 17 check areas:
 
 `UNKNOWN` means that the scanner could not establish a state. `SKIP` means that it did not examine an area. A missing optional tool or unsupported setup can cause a skip. A failed observation can cause an unknown result.
 
-Unknown results add four points. Skipped results add no points. Both results limit coverage. Use the [unknown-results guide](site/unknowns.html) for diagnostic commands and manual checks for firewall, Docker, network, browser, file, agent, model, and environment results.
+Unknown and skipped results add zero points. Both results limit coverage and remain visible in counts. Use the [unknown-results guide](site/unknowns.html) for diagnostic commands and manual checks for firewall, Docker, network, browser, file, agent, model, and environment results.
 
 ## Requirements
 
 | Type | Requirement |
 |---|---|
 | System | Linux or macOS. |
-| Shell | Bash 4 or later. Some macOS installations provide Bash 3.2. |
+| Shell | Bash 3.2 or later (works out of the box on macOS and Linux). |
 | Required commands | `awk`, `basename`, `cat`, `find`, `grep`, `ps`, `stat`, `tr`, `uname`, `wc`, and `whoami`. |
 | Home directory | `HOME` must name an existing absolute directory. |
 | Socket evidence | `ss` or `netstat`. Linux falls back to `/proc/net/tcp` when both are missing. Failed inspection produces unknown results. |
-| Optional checks | Python 3 enables JSON and structured API, browser, MCP, agent-gateway, and model-code checks. `curl`, `docker`, and `nvidia-smi` enable related probes. |
+| Optional checks | Python 3 enables JSON and structured API, browser, MCP, coding-agent, and model-code checks. `curl`, `docker`, and `nvidia-smi` enable related probes. |
 | Docker timeout | Docker metadata calls use `timeout`, `gtimeout`, or Python 3 for a five-second limit. |
 
 Run `bash --version` to examine the shell version. Elevated privileges can improve some firewall and port checks.
@@ -139,26 +138,31 @@ For a downloaded scanner, use `bash iscooked.com [options]`. For a local checkou
 | `--version` | Show the scanner version without a scan. |
 | `--json` | Write one JSON report. Requires Python 3. |
 | `--no-color` | Disable terminal colors. |
+| `-q`, `--problems-only` | Show only critical, warning, and unknown findings. |
+| `--only LIST` | Run only the selected check numbers or slugs (e.g. `mcp,agents,versions`). |
+| `--skip LIST` | Skip the selected check numbers or slugs. |
+| `--diff FILE` | Compare findings against a previous `--json` report. Requires Python 3. |
 | `--fail-on LEVEL` | Select the findings that produce exit status 1. Use `critical`, `warning`, or `unknown`. |
 
 The scanner also disables colors when output is redirected, when `NO_COLOR` is set, or when `TERM=dumb`.
 
 ## JSON reports
 
-`--json` writes one report to standard output. It uses `schema_version: 1` and sets `completed: true` after the report is complete. A report contains scanner metadata, the platform, summary counts, score data, coverage counts, and a `findings` array.
+`--json` writes one report to standard output. It uses `schema_version: 1` and sets `completed: true` after the report is complete. A report contains scanner metadata, the platform, summary counts, score data, coverage counts, an optional `diff` object (when `--diff` is passed), and a `findings` array.
 
-Each finding contains a check ID and title, a status, a message, and points. Check IDs identify areas. They do not identify stable rules. Messages can change between releases. The score includes a capped `value` and an uncapped `raw_value`; its `kind` is `heuristic` and it includes unknown results.
+Each finding contains a check ID and title, a status, a message, points, and an optional `remediation` hint string. Check IDs identify areas. They do not identify stable rules. Messages can change between releases. The score includes a capped `value` and an uncapped `raw_value`; its `kind` is `heuristic` and `includes_unknown` is `false`.
 
-Coverage counts distinct areas with observations, unknown results, and skipped results. These groups can overlap. An area can start without complete coverage. Reports can contain local paths and account names. Examine a report before you share it.
+Coverage counts distinct areas with observations, unknown results, and skipped results. These groups can overlap. An area can start without complete coverage. Reports can contain local paths and account names. Examine a report before you share it. You can open any saved JSON report locally in the [report viewer](https://iscooked.com/report).
 
 Example commands:
 
 ```bash
 bash iscooked.com --help
 bash iscooked.com --version
-bash iscooked.com --no-color
-bash iscooked.com --json > report.json
-bash iscooked.com --json --fail-on critical > report.json
+bash iscooked.com --problems-only
+bash iscooked.com --only mcp,agents,sensitive
+bash iscooked.com --json > cooked.json
+bash iscooked.com --json --diff prev.json --fail-on critical > cooked.json
 ```
 
 ## Exit status
@@ -185,7 +189,7 @@ Most file checks use Unix mode bits. They do not establish access through every 
 
 The telemetry check reads values in the scanner environment and known host mappings. It does not establish the environment of a running service or analyze outbound traffic. `OLLAMA_NO_CLOUD` false values do not establish an opt-out. The Ollama check separates scanner variables from active service settings.
 
-MCP and OpenClaw checks cover selected files and supported JSON settings. For OpenClaw, the scanner runs `openclaw --version` with a 1.5-second limit. It accepts at most 256 output bytes. Version `2026.9.3` and later can use the selected config checks. A command outside the scanner's fixed search path, a failed command, or an older version gives `UNKNOWN`. The parser is strict, so a newer release that adds unrecognized settings also gives `UNKNOWN`. The CLI version does not prove the version of a running gateway. JSON5, includes, interpolation, overrides, and policy enforcement remain incomplete.
+MCP and coding-agent checks cover selected client files and supported JSON, JSONC, and TOML settings without executing servers or agents. Includes, environment interpolation (`${...}`), and unsupported agent, provider, sender, or channel policies produce `UNKNOWN`. Policy enforcement at runtime remains unverified.
 
 Remote model-code checks cover recognized vLLM, Text Generation Inference, and SGLang command lines. They do not inspect configuration files, environment variables, or other runtimes. A model weights revision does not prove an executable code pin.
 
